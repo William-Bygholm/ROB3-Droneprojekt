@@ -3,11 +3,15 @@ import numpy as np
 from pathlib import Path
 
 # Define the folder path
-folder_path = Path(r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Billeder")
+folder_path = Path("Billeder")
 
 # Check if the folder exists
 if not folder_path.exists():
     raise FileNotFoundError(f"The folder {folder_path} does not exist.")
+
+
+#resize images 
+resized_image = cv2.resize(folder_path, None, fx=0.5, fy=0.5)
 
 # List all image files in the folder
 image_files = list(folder_path.glob("*.jpg")) + list(folder_path.glob("*.png"))
