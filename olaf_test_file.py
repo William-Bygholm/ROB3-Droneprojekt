@@ -9,10 +9,6 @@ folder_path = Path("Billeder")
 if not folder_path.exists():
     raise FileNotFoundError(f"The folder {folder_path} does not exist.")
 
-
-#resize images 
-resized_image = cv2.resize(folder_path, None, fx=0.5, fy=0.5)
-
 # List all image files in the folder
 image_files = list(folder_path.glob("*.jpg")) + list(folder_path.glob("*.png"))
 if not image_files:
@@ -26,8 +22,11 @@ for image_file in image_files:
         print(f"Failed to read image {image_file}. Skipping.")
         continue
 
+    # Resize images
+    resized_image = cv2.resize(image, None, fx=0.1, fy=0.1)
+
     # Convert to grayscale
-    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray_image = cv2.cvtColor(resized_image, cv2.COLOR_BGR2GRAY)
 
     # Apply Gaussian blur
     blurred_image = cv2.GaussianBlur(gray_image, (5, 5), 0)
@@ -36,6 +35,6 @@ for image_file in image_files:
     edges = cv2.Canny(blurred_image, 50, 150)
 
     # Display the original and processed images
-    cv2.imshow("Original Image", image)
+    cv2.imshow("Original Image", resized_image)
     cv2.imshow("Edges", edges)
     cv2.waitKey(0)
