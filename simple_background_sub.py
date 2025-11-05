@@ -28,7 +28,7 @@ while True:
     blur = cv2.GaussianBlur(frame, (5, 5), 0)
 
     # apply background subtraction
-    fgmask = fgbg.apply(blur, learningRate=0.0125)
+    fgmask = fgbg.apply(blur, learningRate=0.01)
 
     # MOG2 marks shadows with value 127 — keep only definite foreground (255)
     fgmask_bin = np.where(fgmask == 255, 255, 0).astype('uint8')
