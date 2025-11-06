@@ -16,7 +16,7 @@ from pathlib import Path
 # print(f"Found {len(image_files)} image files.")
 
 # Initialize video capture and background subtractor
-cap = cv2.VideoCapture("Billeder/Elias walking - Copy.mp4")  # Use your drone's video feed
+cap = cv2.VideoCapture("D:\\DCIM\\100MEDIA\\DJI_0951.MP4")  # Use your drone's video feed
 fgbg = cv2.createBackgroundSubtractorMOG2(history=1000, varThreshold=50, detectShadows=True)
 
 while True:
