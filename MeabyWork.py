@@ -35,7 +35,7 @@ def detect_person(image_path):
         aspect_ratio = w / float(h)
 
         # Filter based on size and aspect ratio (adjust as needed)
-        if (w > 1 and h > 6) and (0.3 < aspect_ratio < 0.8):
+        if (w > 20 and h > 50) and (0.1 < aspect_ratio < 1):
             # Check if the contour has enough edges (to reject smooth blobs)
             perimeter = cv2.arcLength(contour, True)
             if perimeter > 1:  # Minimum perimeter to consider
