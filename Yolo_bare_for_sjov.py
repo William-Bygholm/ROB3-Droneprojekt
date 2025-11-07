@@ -4,13 +4,13 @@ import glob
 import os
 
 # --- SETTINGS ---
-image_folder = "Billeder"   # mappen hvor dine billeder ligger
-output_folder = "Output"    # YOLO-resultater gemmes her
+image_folder = "Billeder"   # mappen hvor billeder ligger
+output_folder = "Output"    # YOLO-resultater
 
 os.makedirs(output_folder, exist_ok=True)
 
 # Load YOLO model
-model = YOLO("yolov8n.pt")   # lille, hurtig
+model = YOLO("yolov8n.pt")  
 
 # Find alle billeder i folder
 extensions = ["*.jpg", "*.jpeg", "*.png"]
@@ -38,6 +38,6 @@ for path in image_paths:
 
     # Vis det
     cv2.imshow("YOLO Result", img)
-    cv2.waitKey(300)  # 0 hvis du vil trykke for hvert billede
+    cv2.waitKey(300) 
 
 cv2.destroyAllWindows()
