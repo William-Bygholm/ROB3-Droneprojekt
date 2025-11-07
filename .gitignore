@@ -1,0 +1,5 @@
+# Ignorer videoer
+*.mp4
+*.mov
+Billeder/
+ProjektVideoer/
