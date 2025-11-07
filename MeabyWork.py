@@ -9,37 +9,37 @@ def detect_person(image_path):
         return
 
     # Resize for faster processing
-    image = cv2.resize(image, (640, 640))
+    image = cv2.resize(image, (800, 600))
 
-    # Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Convert to HSV
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-    # Apply Gaussian blur
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    # Define a range for skin/clothing colors (adjust as needed)
+    lower_skin = np.array([0, 20, 70])    # Lower bound for skin/clothing
+    upper_skin = np.array([20, 255, 255])  # Upper bound for skin/clothing
 
-    # Adaptive thresholding to isolate foreground
-    thresh = cv2.adaptiveThreshold(
-        blurred, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, 11, 1
-    )
+    # Create a mask for skin/clothing colors
+    skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
 
-    # Morphological operations to clean up the image
+    # Apply morphological operations to clean up the mask
     kernel = np.ones((5, 5), np.uint8)
-    cleaned = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
+    cleaned = cv2.morphologyEx(skin_mask, cv2.MORPH_OPEN, kernel, iterations=2)
 
     # Find contours
     contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Filter contours based on size and shape
+    # Filter contours based on size, shape, and edges
     person_contours = []
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
         aspect_ratio = w / float(h)
 
         # Filter based on size and aspect ratio (adjust as needed)
-        if (w > 25 and h > 50) and (0.3 < aspect_ratio < 1.0):
-            person_contours.append(contour)
+        if (w > 1 and h > 6) and (0.3 < aspect_ratio < 0.8):
+            # Check if the contour has enough edges (to reject smooth blobs)
+            perimeter = cv2.arcLength(contour, True)
+            if perimeter > 1:  # Minimum perimeter to consider
+                person_contours.append(contour)
 
     # Draw bounding boxes around detected persons
     for contour in person_contours:
