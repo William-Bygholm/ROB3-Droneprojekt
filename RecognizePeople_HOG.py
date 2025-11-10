@@ -21,16 +21,16 @@ cv2.imshow('HOG People Detection', resized)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 """
-cap = cv2.VideoCapture('ProjektVideoer/Civil person.MP4')
+cap = cv2.VideoCapture('ProjektVideoer/Militær blåt bånd.MP4')
 
 while True:
     ret, frame = cap.read()
     if not ret:
         break
     
-    resized = cv2.resize(frame, None, fx=0.3, fy=0.3)
+    resized = cv2.resize(frame, None, fx=0.2, fy=0.2)
     
-    boxes, weights = hog.detectMultiScale(resized, winStride=(4,4), padding=(8,8), scale=1.02)
+    boxes, weights = hog.detectMultiScale(resized, winStride=(4,4), padding=(4,4), scale=1.05)
 
     for (x, y, w, h) in boxes:
         cv2.rectangle(resized, (x, y), (x + w, y + h), (0, 255, 0), 2)
