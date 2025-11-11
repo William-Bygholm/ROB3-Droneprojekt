@@ -38,8 +38,8 @@ while True:
     # Detect humans
     humans = human_cascade.detectMultiScale(
         gray,
-        scaleFactor=1.05,
-        minNeighbors=3,
+        scaleFactor=1.03,
+        minNeighbors=4,
         minSize=(30, 60),  # Minimum size of person in pixels (tune based on drone altitude)
         flags=cv2.CASCADE_SCALE_IMAGE
     )
