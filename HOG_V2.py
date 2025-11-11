@@ -24,7 +24,9 @@ MAX_LOST = 25  # number of frames allowed without detection
 HISTORY_SIZE = 8
 detection_history = []
 
-
+# ------------------------
+# Helper functions
+# ------------------------
 def smooth_box(history):
     xs = [b[0] for b in history]
     ys = [b[1] for b in history]
@@ -37,7 +39,20 @@ def smooth_box(history):
         int(np.mean(hs))
     )
 
+def classify_shirt_color(roi):
+    """Return 'MILITARY' if mostly green, else 'CIVILIAN'"""
+    if roi.size == 0:
+        return "CIVILIAN"
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    lower_green = np.array([35, 50, 50])
+    upper_green = np.array([85, 255, 255])
+    mask = cv2.inRange(hsv, lower_green, upper_green)
+    green_ratio = cv2.countNonZero(mask) / (roi.shape[0] * roi.shape[1])
+    return "MILITARY" if green_ratio > 0.3 else "CIVILIAN"
 
+# ------------------------
+# Main loop
+# ------------------------
 while True:
     ret, frame = cap.read()
     if not ret:
@@ -55,24 +70,19 @@ while True:
     # 1. Stabilization
     # --------------------------
     if prev_gray is not None:
-        # Track fewer points → faster
         if prev_pts is None:
             prev_pts = cv2.goodFeaturesToTrack(prev_gray, maxCorners=40,
                                                qualityLevel=0.2, minDistance=30)
-
         if prev_pts is not None:
             curr_pts, st, err = cv2.calcOpticalFlowPyrLK(prev_gray, gray, prev_pts, None)
             if curr_pts is not None:
                 good_old = prev_pts[st == 1]
                 good_new = curr_pts[st == 1]
-
                 if len(good_old) > 10:
                     M, _ = cv2.estimateAffine2D(good_old, good_new)
                     if M is not None:
                         stabilized = cv2.warpAffine(frame, M, (w, h))
-
-                prev_pts = good_new.reshape(-1, 1, 2)
-
+                prev_pts = good_new.reshape(-1,1,2)
     prev_gray = gray
 
     # --------------------------
@@ -93,40 +103,31 @@ while True:
     # --------------------------
     filtered_boxes = []
     for (box, weight) in zip(boxes, weights):
-        if weight > 0.6:  # threshold tuning
+        if weight > 0.6:
             (x, y, w_box, h_box) = box
-            # basic geometric filtering
             if 30 < w_box < 350 and 40 < h_box < 350:
                 filtered_boxes.append(box)
 
     # --------------------------
     # 5. Memory + smoothing
     # --------------------------
-
-    # CASE 1: Detection present
     if len(filtered_boxes) > 0:
         best = filtered_boxes[0]
         last_box = best
         lost_counter = 0
 
-        # Add to smoothing history
         detection_history.append(best)
         if len(detection_history) > HISTORY_SIZE:
             detection_history.pop(0)
 
         smoothed = smooth_box(detection_history)
         show_box = smoothed
-
-    # CASE 2: No detection but last known exists
     else:
         if last_box is not None:
             lost_counter += 1
-
-            # If missing but not too long → show memory box
             if lost_counter < MAX_LOST:
                 show_box = last_box
             else:
-                # too long → forget it
                 last_box = None
                 detection_history.clear()
                 show_box = None
@@ -134,22 +135,21 @@ while True:
             show_box = None
 
     # --------------------------
-    # 6. Draw output
+    # 6. Shirt color classification
     # --------------------------
     output = frame.copy()
-
     if show_box is not None:
-        (x, y, w_box, h_box) = show_box
+        x, y, w_box, h_box = show_box
+        # Take top half of bounding box for shirt
+        shirt_roi = frame[y:y + int(h_box / 2), x:x + w_box]
+        shirt_label = classify_shirt_color(shirt_roi)
+
+        # Draw rectangle and label
         cv2.rectangle(output, (x, y), (x + w_box, y + h_box), (0, 255, 0), 2)
-        if len(filtered_boxes) > 0:
-            cv2.putText(output, "PERSON (detected)", (x, y - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
-        else:
-            cv2.putText(output, "PERSON (memory)", (x, y - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
+        cv2.putText(output, f"{shirt_label}", (x, y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-    cv2.imshow("HOG Detection with Stabilization + Memory", output)
-
+    cv2.imshow("HOG Detection + Shirt Color", output)
     if cv2.waitKey(1) == 27:  # ESC to exit
         break
 
