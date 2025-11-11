@@ -43,7 +43,7 @@ def classify_shirt_color(roi):
     hue = hsv[:,:,0]
     mask = cv2.inRange(hue, lower_hue, upper_hue)
     green_ratio = cv2.countNonZero(mask) / (roi.shape[0]*roi.shape[1])
-    return "MILITARY" if green_ratio > 0.3 else "CIVILIAN"
+    return "MILITARY" if green_ratio > 0.25 else "CIVILIAN"
 
 
 def iou(boxA, boxB):
