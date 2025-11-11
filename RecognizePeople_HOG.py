@@ -25,12 +25,19 @@ cv2.destroyAllWindows()
 
 cap = cv2.VideoCapture('ProjektVideoer/Civil person.MP4')
 
+frame_count = 0
+regions = []
+
 while True:
     ret, frame = cap.read()
-    if ret:
-        frame = imutils.resize(frame, width=min(400, frame.shape[1]))
+    if not ret:
+        break
     
-    (regions, _) = hog.detectMultiScale(frame, winStride=(4,4), padding=(4,4), scale=1.05)
+    frame = imutils.resize(frame, width=min(400, frame.shape[1]))
+    frame_count += 1
+
+    if frame_count % 10 == 0:    
+        regions, weights = hog.detectMultiScale(frame, winStride=(4,4), padding=(4,4), scale=1.05)
 
     for (x, y, w, h) in regions:
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
