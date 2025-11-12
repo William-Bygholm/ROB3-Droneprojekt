@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "Projekt adek workshop3 encoder",
+			"path": "../../PlatformIO/Projects/Projekt adek workshop3 encoder"
+		}
+	],
+	"settings": {
+		"python-envs.defaultEnvManager": "ms-python.python:system",
+		"python-envs.defaultPackageManager": "ms-python.python:pip",
+		"python-envs.pythonProjects": [
+			{
+				"path": "olaf_test_file.py",
+				"envManager": "ms-python.python:system",
+				"packageManager": "ms-python.python:pip"
+			}
+		]
+	}
+}
