@@ -32,7 +32,7 @@ def rgb_to_hsi(image):
     return cv2.merge((H, S, I))
 
 # --- Load image (BGR in OpenCV) ---
-img_bgr = cv2.imread("Billeder/IMG_20251104_094347.jpg")
+img_bgr = cv2.imread("C:/Users/alexa/Desktop/Video til Projekt/Test til HSI.png")
 
 # Convert BGR → RGB for displaying with matplotlib
 img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)

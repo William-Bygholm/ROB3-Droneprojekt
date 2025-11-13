@@ -14,7 +14,7 @@ resize_scale = 0.35
 prev_gray = None
 prev_pts = None
 
-MAX_LOST = 25  # frames to keep memory
+MAX_LOST = 25  # frames to keep memory 
 HISTORY_SIZE = 8
 
 # Tracked people list
