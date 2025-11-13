@@ -12,7 +12,7 @@ while True:
         break
     frame = imutils.resize(frame, width=min(600, frame.shape[1]))
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    faces = face_cascade.detectMultiScale(hsv, scaleFactor=1.1, minNeighbors=5)
+    faces = face_cascade.detectMultiScale(hsv, scaleFactor=1.1, minNeighbors=7)
 
     for (x, y, w, h) in faces:
         cv2.rectangle(frame, (x,y), (x + w, y + h), (255, 0, 0), 2)
