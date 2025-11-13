@@ -23,7 +23,7 @@ cv2.waitKey(0)
 cv2.destroyAllWindows()
 """
 
-cap = cv2.VideoCapture('ProjektVideoer/Civil person.MP4')
+cap = cv2.VideoCapture('ProjektVideoer/Militær uden bånd.MP4')
 
 frame_count = 0
 regions = []
@@ -41,7 +41,7 @@ while True:
 
     for (x, y, w, h) in regions:
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-    
+
     cv2.imshow('HOG People Detection', frame)
     if cv2.waitKey(1) == ord('q'):
         break
