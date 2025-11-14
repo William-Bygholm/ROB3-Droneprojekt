@@ -39,8 +39,8 @@ while True:
     # - minSize: minimum object size (width, height)
     detections = cascade.detectMultiScale(
         gray,
-        scaleFactor=1.01,      # smaller = more thorough but slower
-        minNeighbors=6,       # higher = fewer false positives
+        scaleFactor=1.1,      # smaller = more thorough but slower
+        minNeighbors=3,       # higher = fewer false positives
         minSize=(30, 90),     # adjust based on expected person size in frame
         flags=cv2.CASCADE_SCALE_IMAGE
     )
