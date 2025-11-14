@@ -8,8 +8,14 @@ hog = cv2.HOGDescriptor()
 hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
 # Load video
+<<<<<<< HEAD
+cap = cv2.VideoCapture("ProjektVideoer/Civil person.MP4")
+
+resize_scale = 0.35  # smaller = faster detection
+=======
 cap = cv2.VideoCapture("ProjektVideoer/Militær uden bånd.MP4")
 resize_scale = 0.35
+>>>>>>> 07795b3d785615c6c2a8a90396d2b38ea21f1b8c
 
 prev_gray = None
 prev_pts = None
