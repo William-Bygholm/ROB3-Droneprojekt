@@ -8,7 +8,7 @@ import os
 image_folder = "Billeder"   # mappen hvor billeder ligger
 output_folder = "Output"    # YOLO-resultater
 process_video = True        # set True to process a video in Billeder, False to process images
-video_name = "Elias walking - Copy.mp4"  # change to your video filename if needed
+video_name = "ProjektVideoer/2 mili der ligger ned og 1 civil.MP4"  # change to your video filename if needed
 
 os.makedirs(output_folder, exist_ok=True)
 
@@ -16,7 +16,7 @@ os.makedirs(output_folder, exist_ok=True)
 model = YOLO("yolov8n.pt")
 
 if process_video:
-    video_path = Path("Billeder") / video_name
+    video_path = Path("ProjektVideoer") / video_name
     if not video_path.exists():
         raise FileNotFoundError(f"Video not found: {video_path}")
 
