@@ -36,3 +36,8 @@ def load_reference_histograms(base_dir):
                     histograms.append(compute_histogram(img))
         reference_histograms[label] = histograms
     return reference_histograms
+
+img = cv2.imread('Billeder/Military close range.png')
+cv2.imshow('Input Image', img)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
