@@ -78,8 +78,8 @@ def main():
     parser.add_argument("--test-size", type=float, default=0.2, help="Test set fraction")
     args = parser.parse_args()
 
-    pos_dir = Path(args.pos)
-    neg_dir = Path(args.neg)
+    pos_dir = Path("C:/Users/alexa/Downloads/positives1/positives")
+    neg_dir = Path("C:/Users/alexa/Downloads/negatives1/negatives")
     if not pos_dir.exists() or not neg_dir.exists():
         raise FileNotFoundError("Positive or negative directory does not exist")
 
