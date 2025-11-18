@@ -17,7 +17,7 @@ print(f"Loaded Haar cascade: {cascade_path}")
 # ----------------------------------------
 # 2. Load video
 # ----------------------------------------
-cap = cv2.VideoCapture("ProjektVideoer\\Civil person.MP4")
+cap = cv2.VideoCapture("ProjektVideoer\Civil person.MP4")
 resize_scale = 0.5  # adjust for speed vs accuracy
 
 frame_count = 0
