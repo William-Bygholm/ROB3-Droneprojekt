@@ -4,7 +4,7 @@ import numpy as np
 # ----------------------------------------
 # 1. Load reference image of the person
 # ----------------------------------------
-template_path = "Billeder\\reference_person.jpg"  # replace with your template image
+template_path = "Billeder\reference_person.jpg"  # replace with your template image
 template = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
 if template is None:
     raise FileNotFoundError(f"Template image not found: {template_path}")
@@ -32,7 +32,7 @@ matcher = cv2.FlannBasedMatcher(index_params, search_params)
 # ----------------------------------------
 # 4. Load video
 # ----------------------------------------
-cap = cv2.VideoCapture("ProjektVideoer\\Civil person.MP4")
+cap = cv2.VideoCapture("ProjektVideoer\Civil person.MP4")
 resize_scale = 0.5  # adjust for speed vs accuracy
 
 frame_count = 0
