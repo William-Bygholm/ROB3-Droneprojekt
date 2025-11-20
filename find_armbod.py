@@ -112,6 +112,124 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     return out, mask_red, mask_blue, red_boxes, blue_boxes
 
 
+def classify_target(red_boxes, blue_boxes):
+    """
+    Classify target based on detected red/blue boxes.
+    Returns tuple: (classification_string, target_type, is_hvt)
+    
+    Rules:
+    - No boxes: "No target"
+    - 1 blue: "Good soldier"
+    - 1 red: "Bad soldier"
+    - 2 blue: "Good soldier (HVT)"
+    - 2 red: "Bad soldier (HVT)"
+    - 1 red + 1 blue: compare areas -> larger wins
+    - 2 blue + 1 red: "Good soldier (HVT)"
+    - 2 red + 1 blue: "Bad soldier (HVT)"
+    """
+    num_red = len(red_boxes)
+    num_blue = len(blue_boxes)
+    
+    # No boxes found
+    if num_red == 0 and num_blue == 0:
+        return "No target", None, False
+    
+    # Normal cases - single color only
+    if num_blue > 0 and num_red == 0:
+        if num_blue == 1:
+            return "Good soldier", "good", False
+        elif num_blue == 2:
+            return "Good soldier (HVT)", "good", True
+    
+    if num_red > 0 and num_blue == 0:
+        if num_red == 1:
+            return "Bad soldier", "bad", False
+        elif num_red == 2:
+            return "Bad soldier (HVT)", "bad", True
+    
+    # Mixed cases - both colors present
+    # Case: 2 blue + 1 red
+    if num_blue == 2 and num_red == 1:
+        return "Good soldier (HVT)", "good", True
+    
+    # Case: 2 red + 1 blue
+    if num_red == 2 and num_blue == 1:
+        return "Bad soldier (HVT)", "bad", True
+    
+    # Case: 1 red + 1 blue -> compare areas
+    if num_red == 1 and num_blue == 1:
+        # boxes format: (x, y, w, h, area)
+        red_area = red_boxes[0][4]
+        blue_area = blue_boxes[0][4]
+        
+        if blue_area > red_area:
+            return "Good soldier (area-based)", "good", False
+        else:
+            return "Bad soldier (area-based)", "bad", False
+    
+    # Fallback for any other combinations
+    return "Uncertain classification", None, False
+
+
+def classify_target(red_boxes, blue_boxes):
+    """
+    Classify target based on detected red/blue boxes.
+    Returns tuple: (classification_string, target_type, is_hvt)
+    
+    Rules:
+    - No boxes: "No target"
+    - 1 blue: "Good soldier"
+    - 1 red: "Bad soldier"
+    - 2 blue: "Good soldier (HVT)"
+    - 2 red: "Bad soldier (HVT)"
+    - 1 red + 1 blue: compare areas -> larger wins
+    - 2 blue + 1 red: "Good soldier (HVT)"
+    - 2 red + 1 blue: "Bad soldier (HVT)"
+    """
+    num_red = len(red_boxes)
+    num_blue = len(blue_boxes)
+    
+    # No boxes found
+    if num_red == 0 and num_blue == 0:
+        return "No target", None, False
+    
+    # Normal cases - single color only
+    if num_blue > 0 and num_red == 0:
+        if num_blue == 1:
+            return "Good soldier", "good", False
+        elif num_blue == 2:
+            return "Good soldier (HVT)", "good", True
+    
+    if num_red > 0 and num_blue == 0:
+        if num_red == 1:
+            return "Bad soldier", "bad", False
+        elif num_red == 2:
+            return "Bad soldier (HVT)", "bad", True
+    
+    # Mixed cases - both colors present
+    # Case: 2 blue + 1 red
+    if num_blue == 2 and num_red == 1:
+        return "Good soldier (HVT)", "good", True
+    
+    # Case: 2 red + 1 blue
+    if num_red == 2 and num_blue == 1:
+        return "Bad soldier (HVT)", "bad", True
+    
+    # Case: 1 red + 1 blue -> compare areas
+    if num_red == 1 and num_blue == 1:
+        # boxes format: (x, y, w, h, area)
+        red_area = red_boxes[0][4]
+        blue_area = blue_boxes[0][4]
+        
+        if blue_area > red_area:
+            return "Good soldier (area-based)", "good", False
+        else:
+            return "Bad soldier (area-based)", "bad", False
+    
+    # Fallback for any other combinations
+    return "Uncertain classification", None, False
+
+
 def process_image(image_path):
     img = cv2.imread(image_path)
     if img is None:
@@ -141,6 +259,33 @@ def process_image(image_path):
     blurred = dynamic_blur(img, scale=0.02, min_k=3, max_k=51)
 
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred, morph_kernel=(3,3), morph_iters=1)
+    
+    # Classify the target based on detected boxes
+    classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
+    
+    # Add classification text with background for readability
+    text_y = 35
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.9
+    font_thickness = 2
+    
+    # Get text size for background rectangle
+    (text_w, text_h), baseline = cv2.getTextSize(classification, font, font_scale, font_thickness)
+    
+    # Draw black background rectangle for classification
+    cv2.rectangle(annotated, (5, text_y - text_h - 10), (text_w + 15, text_y + baseline + 5), (0, 0, 0), -1)
+    # Draw classification text
+    cv2.putText(annotated, classification, (10, text_y),
+                font, font_scale, (0, 255, 255), font_thickness, cv2.LINE_AA)
+    
+    # Optional: add counts for debugging with background
+    counts = f"Red: {len(red_boxes)} | Blue: {len(blue_boxes)}"
+    count_y = text_y + 40
+    (count_w, count_h), count_baseline = cv2.getTextSize(counts, font, 0.7, 2)
+    cv2.rectangle(annotated, (5, count_y - count_h - 10), (count_w + 15, count_y + count_baseline + 5), (0, 0, 0), -1)
+    cv2.putText(annotated, counts, (10, count_y),
+                font, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+    
     # return annotated image (you may also return masks if wanted)
     return annotated
 
@@ -242,7 +387,7 @@ def show_images(paths, display_size=(800,600)):
             disp = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
         else:
             disp = out
-        disp = resize_and_pad(disp, target_size:=display_size)
+        disp = resize_and_pad(disp, target_size=display_size)
         cv2.imshow(win, disp)
         k = cv2.waitKey(0) & 0xFF
         if k == 27 or k == ord('q'):
