@@ -1,148 +1,256 @@
-import sys
-from pathlib import Path
+import os
 import cv2
 import numpy as np
 
-# Morphological operation parameters
-MORPH_KERNEL_SIZE = (5, 5)
-MORPH_ITERATIONS = 1
 
-#!/usr/bin/env python3
-"""
-find_armbod.py
+def get_image_paths(folder_path):
+    folder_path = os.path.join(os.path.dirname(__file__), folder_path)
+    if not os.path.isdir(folder_path):
+        raise ValueError(f"The folder path '{folder_path}' is not a valid directory.")
+    files = sorted(os.listdir(folder_path))
+    image_paths = [os.path.join(folder_path, f) for f in files
+                   if os.path.splitext(f)[1].lower() in [".png", ".jpg", ".jpeg"]]
+    return image_paths
 
-Load images from a folder named "mili_med_og_uden_bond" (sibling to this script)
-and display them one by one using OpenCV. Press any key to advance, 'q' to quit.
-"""
+def color_mask(hsv, lower, upper):
+    """Handle hue wrap-around when creating an inRange mask."""
+    lh, ls, lv = int(lower[0]), int(lower[1]), int(lower[2])
+    uh, us, uv = int(upper[0]), int(upper[1]), int(upper[2])
+    if lh <= uh:
+        return cv2.inRange(hsv, np.array([lh, ls, lv], np.uint8), np.array([uh, us, uv], np.uint8))
+    # wrap around 180 -> union of two ranges
+    m1 = cv2.inRange(hsv, np.array([lh, ls, lv], np.uint8), np.array([179, us, uv], np.uint8))
+    m2 = cv2.inRange(hsv, np.array([0, ls, lv], np.uint8), np.array([uh, us, uv], np.uint8))
+    return cv2.bitwise_or(m1, m2)
 
-# Folder containing images (sibling to this script)
-IMAGES_DIR = Path(__file__).resolve().parent / "mili_med_og_uden_bond"
-# Supported extensions
-EXTS = ("*.jpg", "*.jpeg", "*.png", "*.bmp", "*.tiff", "*.tif")
 
-def get_image_paths(folder: Path):
-    paths = []
-    for ext in EXTS:
-        paths.extend(folder.glob(ext))
-    return sorted(paths)
-
-def process_image(img_path: Path):
+def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2, boost_factor=1.5):
     """
-    Load one image, do some processing, return processed image.
-    Change the processing steps below to experiment with different methods.
-    """
-    # Constant for cropping ratio (top half)
-    CROP_RATIO = 0.5
+    Return annotated image, counts, and masks for detected red and blue patches.
+    Keeps only up to `max_components` largest components per color.
 
-    # Read image
-    img = cv2.imread(str(img_path))
-    if img is None:
-        print(f"Failed to load: {img_path}")
-        return None
-    
-    # Remove bottom half of the image (keep only top half)
-    height = img.shape[0]
-    img = img[0:int(height * CROP_RATIO), :]  # keep rows 0 to height*CROP_RATIO, all columns
-    
+    Parameters:
+    - boost_factor: multiplier applied to R or B channel in pixels that already pass threshold (e.g. 1.5).
+    """
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    
-    # Mask 1: Green/yellow colors (armband) - keep what's OUTSIDE this
-    lower_green = np.array([15, 30, 30])
-    upper_green = np.array([80, 255, 255])
-    mask_green = cv2.inRange(hsv, lower_green, upper_green)
-    mask_green_inv = cv2.bitwise_not(mask_green)  # invert to remove green/yellow
-    
-    # Mask 2: Orange background - remove this too
-    # Orange is typically H: 10-25, S: 100-255, V: 100-255 (tune as needed)
-    lower_orange = np.array([8, 100, 100])
-    upper_orange = np.array([25, 255, 255])
-    mask_orange = cv2.inRange(hsv, lower_orange, upper_orange)
-    mask_orange_inv = cv2.bitwise_not(mask_orange)  # invert to remove orange
-    
-    # Apply morphology to clean up mask (remove small noise)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, MORPH_KERNEL_SIZE)
-    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel, iterations=MORPH_ITERATIONS)
-    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel, iterations=MORPH_ITERATIONS)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
-    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-    
-    # Find all connected components (blobs)
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(combined_mask, connectivity=8)
-    
-    # Find the largest blob (excluding background label 0)
-    if num_labels > 1:
-        # stats columns: [left, top, width, height, area]
-        # label 0 is background, so start from label 1
-        areas = stats[1:, cv2.CC_STAT_AREA]  # get areas of all blobs except background
-        largest_label = np.argmax(areas) + 1  # +1 because we sliced from index 1
-        
-        # Create mask with only the largest blob
-        largest_blob_mask = np.zeros_like(combined_mask)
-        largest_blob_mask[labels == largest_label] = 255
-        
-        combined_mask = largest_blob_mask
-    
-    # Apply final mask to original image
-    processed = cv2.bitwise_and(img, img, mask=combined_mask)
-    
-    # Optional: show the combined mask itself (for debugging)
-    # processed = cv2.cvtColor(combined_mask, cv2.COLOR_GRAY2BGR)
-    
-    return processed
 
-def display_images():
-    """
-    Load images one by one, process, and display.
-    Press 'n' or space to go to next, 'b' to go back, 'q' or ESC to quit.
-    """
-    image_paths = get_image_paths(IMAGES_DIR)
-    if not image_paths:
-        print(f"No images found in {IMAGES_DIR}")
-    idx = 0
-    window_name = "Processed Image"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    # HSV ranges (tune if needed)
+    red_lower1 = np.array([0, 100, 50], dtype=np.uint8)
+    red_upper1 = np.array([10, 255, 255], dtype=np.uint8)
+    red_lower2 = np.array([170, 100, 50], dtype=np.uint8)
+    red_upper2 = np.array([180, 255, 255], dtype=np.uint8)
 
-    consecutive_failures = 0
-    max_failures = 10  # You can adjust this threshold as needed
-    
-    while True:
-        img_path = image_paths[idx]
-        processed = process_image(img_path)
-        
-        if processed is None:
-            consecutive_failures += 1
-            if consecutive_failures >= max_failures:
-                print(f"Too many consecutive image load failures ({max_failures}). Exiting.")
-                break
-            idx = min(idx + 1, len(image_paths) - 1)
+    blue_lower = np.array([100, 100, 50], dtype=np.uint8)
+    blue_upper = np.array([130, 255, 255], dtype=np.uint8)
+
+    # Build initial masks
+    mask_red = cv2.bitwise_or(color_mask(hsv, red_lower1, red_upper1),
+                              color_mask(hsv, red_lower2, red_upper2))
+    mask_blue = color_mask(hsv, blue_lower, blue_upper)
+
+    # --- SELECTIVE COLOR BOOST: amplify R in red-mask pixels and B in blue-mask pixels ---
+    img_boosted = img.copy().astype(np.float32)
+    b, g, r = cv2.split(img_boosted)
+
+    # boost red channel where mask_red is white
+    r[mask_red > 0] *= boost_factor
+    r = np.clip(r, 0, 255)
+
+    # boost blue channel where mask_blue is white
+    b[mask_blue > 0] *= boost_factor
+    b = np.clip(b, 0, 255)
+
+    img_boosted = cv2.merge((b, g, r)).astype(np.uint8)
+
+    # rebuild HSV from boosted image and recompute masks (they will be stronger now)
+    hsv_boosted = cv2.cvtColor(img_boosted, cv2.COLOR_BGR2HSV)
+    mask_red = cv2.bitwise_or(color_mask(hsv_boosted, red_lower1, red_upper1),
+                              color_mask(hsv_boosted, red_lower2, red_upper2))
+    mask_blue = color_mask(hsv_boosted, blue_lower, blue_upper)
+
+    # Morphological cleanup
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
+    mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
+    mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
+    mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
+    mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
+
+    # Find connected components and filter small ones by area (absolute + relative)
+    h, w = img_boosted.shape[:2]
+    rel_min = int(h * w * rel_area_multiplier)
+    min_area = max(int(min_pixels), rel_min)
+
+    def find_components(mask):
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        boxes = []
+        for i in range(1, n):
+            area = int(stats[i, cv2.CC_STAT_AREA])
+            if area >= min_area:
+                x = int(stats[i, cv2.CC_STAT_LEFT])
+                y = int(stats[i, cv2.CC_STAT_TOP])
+                ww = int(stats[i, cv2.CC_STAT_WIDTH])
+                hh = int(stats[i, cv2.CC_STAT_HEIGHT])
+                boxes.append((x, y, ww, hh, area))
+        return boxes
+
+    red_boxes = find_components(mask_red)
+    blue_boxes = find_components(mask_blue)
+
+    # Keep only the largest `max_components` per color
+    if len(red_boxes) > max_components:
+        red_boxes = sorted(red_boxes, key=lambda b: b[4], reverse=True)[:max_components]
+    if len(blue_boxes) > max_components:
+        blue_boxes = sorted(blue_boxes, key=lambda b: b[4], reverse=True)[:max_components]
+
+    # Annotate the boosted image (not original)
+    out = img_boosted.copy()
+    for (x, y, ww, hh, area) in red_boxes:
+        cv2.rectangle(out, (x, y), (x+ww, y+hh), (0,0,255), 2)
+    for (x, y, ww, hh, area) in blue_boxes:
+        cv2.rectangle(out, (x, y), (x+ww, y+hh), (255,0,0), 2)
+
+    return out, mask_red, mask_blue, red_boxes, blue_boxes
+
+
+def process_image(image_path):
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError(f"Could not read image at {image_path}")
+
+    # --- vertical crop: remove top portion and keep a top block ---
+    TOP_REMOVE_RATIO = 0.25  # remove top 25% of original
+    TOP_KEEP_RATIO = 0.5     # keep up to 50% of original (rows start_row .. end_row)
+    h = img.shape[0]
+    start_row = int(h * TOP_REMOVE_RATIO)
+    end_row = int(h * TOP_KEEP_RATIO)
+    if start_row >= end_row:
+        img = img[:int(h * TOP_KEEP_RATIO), :]
+    else:
+        img = img[start_row:end_row, :]
+
+    # --- horizontal crop: remove 5% from each side (margin) ---
+    WIDTH_REMOVE_RATIO = 0.05  # remove 5% from left and 5% from right
+    w = img.shape[1]
+    left = int(w * WIDTH_REMOVE_RATIO)
+    right = int(w * (1.0 - WIDTH_REMOVE_RATIO))
+    if left < right:
+        img = img[:, left:right]
+
+
+    # blur color image (dynamic_blur handles multi-channel)
+    blurred = dynamic_blur(img, scale=0.02, min_k=3, max_k=51)
+
+    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred, morph_kernel=(3,3), morph_iters=1)
+    # return annotated image (you may also return masks if wanted)
+    return annotated
+
+
+def dynamic_blur(gray, scale=0.1, min_k=1, max_k=101):
+    """
+    Compute a Gaussian blur kernel proportional to image size.
+    - scale: fraction of the smaller image dimension used for kernel (e.g. 0.02 = 2%)
+    - min_k/max_k: bounds for kernel size (must be odd). Returns blurred image.
+    """
+    h, w = gray.shape[:2]
+    k = max(min_k, int(min(h, w) * scale))
+    if k % 2 == 0:
+        k += 1
+    # ensure max_k odd
+    if max_k % 2 == 0:
+        max_k -= 1
+    k = min(k, max_k)
+    # ensure sensible minimum
+    if k < 3:
+        k = 3
+    return cv2.GaussianBlur(gray, (k, k), 0)
+
+
+
+def detect_from_masks(img, mask_red, mask_blue, min_pixels=1, rel_area_multiplier=0.0005, max_components=2):
+    """
+    Run connected-component filtering on provided masks and annotate image.
+    Returns (annotated, mask_red, mask_blue, red_boxes, blue_boxes).
+    """
+    h, w = img.shape[:2]
+    rel_min = int(h * w * rel_area_multiplier)
+    min_area = max(int(min_pixels), rel_min)
+
+    def find_components(mask):
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        boxes = []
+        for i in range(1, n):
+            area = int(stats[i, cv2.CC_STAT_AREA])
+            if area >= min_area:
+                x = int(stats[i, cv2.CC_STAT_LEFT])
+                y = int(stats[i, cv2.CC_STAT_TOP])
+                ww = int(stats[i, cv2.CC_STAT_WIDTH])
+                hh = int(stats[i, cv2.CC_STAT_HEIGHT])
+                boxes.append((x, y, ww, hh, area))
+        return boxes
+
+    red_boxes = find_components(mask_red)
+    blue_boxes = find_components(mask_blue)
+
+    if len(red_boxes) > max_components:
+        red_boxes = sorted(red_boxes, key=lambda b: b[4], reverse=True)[:max_components]
+    if len(blue_boxes) > max_components:
+        blue_boxes = sorted(blue_boxes, key=lambda b: b[4], reverse=True)[:max_components]
+
+    out = img.copy()
+    for (x, y, ww, hh, area) in red_boxes:
+        cv2.rectangle(out, (x, y), (x+ww, y+hh), (0,0,255), 2)
+    for (x, y, ww, hh, area) in blue_boxes:
+        cv2.rectangle(out, (x, y), (x+ww, y+hh), (255,0,0), 2)
+
+    return out, mask_red, mask_blue, red_boxes, blue_boxes
+
+def resize_and_pad(img, target_size=(800,600)):
+    """
+    Resize img to fit inside target_size while keeping aspect ratio.
+    Pads with black to exactly match target_size.
+    """
+    tgt_w, tgt_h = target_size
+    h, w = img.shape[:2]
+    if w == 0 or h == 0:
+        return np.zeros((tgt_h, tgt_w), dtype=img.dtype) if img.ndim == 2 else np.zeros((tgt_h, tgt_w, 3), dtype=img.dtype)
+    scale = min(tgt_w / w, tgt_h / h)
+    nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+    resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
+    if resized.ndim == 2:
+        canvas = np.zeros((tgt_h, tgt_w), dtype=resized.dtype)
+    else:
+        canvas = np.zeros((tgt_h, tgt_w, 3), dtype=resized.dtype)
+    x = (tgt_w - nw) // 2
+    y = (tgt_h - nh) // 2
+    canvas[y:y+nh, x:x+nw] = resized
+    return canvas
+
+def show_images(paths, display_size=(800,600)):
+    if not paths:
+        print("No images found")
+        return
+    win = "Img"
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    for p in paths:
+        try:
+            out = process_image(p)
+        except Exception as e:
+            print("skip:", p, e)
             continue
+        # ensure 3-channel for consistent display
+        if out.ndim == 2:
+            disp = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
         else:
-            consecutive_failures = 0
-        
-        # Add text overlay with filename and index
-        display = processed.copy()
-        #text = f"{idx+1}/{len(image_paths)}: {img_path.name}"
-        #cv2.putText(display, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
-        #            0.7, (0, 255, 255), 2)
-        
-        cv2.imshow(window_name, display)
-        
-        key = cv2.waitKey(0) & 0xFF
-        
-        if key == 27 or key == ord('q'):  # ESC or q to quit
+            disp = out
+        disp = resize_and_pad(disp, target_size:=display_size)
+        cv2.imshow(win, disp)
+        k = cv2.waitKey(0) & 0xFF
+        if k == 27 or k == ord('q'):
             break
-        elif key == ord('n') or key == ord(' '):  # n or space to next
-            idx = min(idx + 1, len(image_paths) - 1)
-        elif key == ord('b'):  # b to go back
-            idx = max(idx - 1, 0)
-    
-    cv2.destroyAllWindows()
-        elif key == ord('b'):  # b to go back
-            idx = max(idx - 1, 0)
-    
     cv2.destroyAllWindows()
 
+# usage
 if __name__ == "__main__":
-    display_images()
-
+    folder = "C:\\Users\\olafa\\Documents\\GitHub\\ROB3-Droneprojekt\\mili_med_og_uden_bond"  # specify your folder here
+    image_paths = get_image_paths(folder)
+    show_images(image_paths, display_size=(800,600))
