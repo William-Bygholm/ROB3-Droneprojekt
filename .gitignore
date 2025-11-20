@@ -1,0 +1,5 @@
+# Ignorer videoer
+*.mp4
+*.mov
+ProjektVideoer/
+mili_med_og_uden_bond/
