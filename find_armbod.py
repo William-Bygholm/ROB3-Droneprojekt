@@ -254,6 +254,15 @@ def process_image(image_path):
     if left < right:
         img = img[:, left:right]
 
+    # Save cropped image to Output folder
+    output_dir = os.path.join(os.path.dirname(__file__), "Output")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    base_name = os.path.basename(image_path)
+    name_without_ext = os.path.splitext(base_name)[0]
+    cropped_filename = f"{name_without_ext}_cropped.png"
+    cropped_path = os.path.join(output_dir, cropped_filename)
+    cv2.imwrite(cropped_path, img)
 
     # blur color image (dynamic_blur handles multi-channel)
     blurred = dynamic_blur(img, scale=0.02, min_k=3, max_k=51)
@@ -263,28 +272,11 @@ def process_image(image_path):
     # Classify the target based on detected boxes
     classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
     
-    # Add classification text with background for readability
-    text_y = 35
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.9
-    font_thickness = 2
-    
-    # Get text size for background rectangle
-    (text_w, text_h), baseline = cv2.getTextSize(classification, font, font_scale, font_thickness)
-    
-    # Draw black background rectangle for classification
-    cv2.rectangle(annotated, (5, text_y - text_h - 10), (text_w + 15, text_y + baseline + 5), (0, 0, 0), -1)
-    # Draw classification text
-    cv2.putText(annotated, classification, (10, text_y),
-                font, font_scale, (0, 255, 255), font_thickness, cv2.LINE_AA)
-    
-    # Optional: add counts for debugging with background
-    counts = f"Red: {len(red_boxes)} | Blue: {len(blue_boxes)}"
-    count_y = text_y + 40
-    (count_w, count_h), count_baseline = cv2.getTextSize(counts, font, 0.7, 2)
-    cv2.rectangle(annotated, (5, count_y - count_h - 10), (count_w + 15, count_y + count_baseline + 5), (0, 0, 0), -1)
-    cv2.putText(annotated, counts, (10, count_y),
-                font, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+    # Print classification to console
+    print(f"Image: {os.path.basename(image_path)}")
+    print(f"  Classification: {classification}")
+    print(f"  Red boxes: {len(red_boxes)} | Blue boxes: {len(blue_boxes)}")
+    print()
     
     # return annotated image (you may also return masks if wanted)
     return annotated
