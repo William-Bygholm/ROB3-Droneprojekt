@@ -48,26 +48,6 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
                               color_mask(hsv, red_lower2, red_upper2))
     mask_blue = color_mask(hsv, blue_lower, blue_upper)
 
-    # --- SELECTIVE COLOR BOOST: amplify R in red-mask pixels and B in blue-mask pixels ---
-    img_boosted = img.copy().astype(np.float32)
-    b, g, r = cv2.split(img_boosted)
-
-    # boost red channel where mask_red is white
-    r[mask_red > 0] *= boost_factor
-    r = np.clip(r, 0, 255)
-
-    # boost blue channel where mask_blue is white
-    b[mask_blue > 0] *= boost_factor
-    b = np.clip(b, 0, 255)
-
-    img_boosted = cv2.merge((b, g, r)).astype(np.uint8)
-
-    # rebuild HSV from boosted image and recompute masks (they will be stronger now)
-    hsv_boosted = cv2.cvtColor(img_boosted, cv2.COLOR_BGR2HSV)
-    mask_red = cv2.bitwise_or(color_mask(hsv_boosted, red_lower1, red_upper1),
-                              color_mask(hsv_boosted, red_lower2, red_upper2))
-    mask_blue = color_mask(hsv_boosted, blue_lower, blue_upper)
-
     # Morphological cleanup
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
     mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
@@ -76,7 +56,7 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
 
     # Find connected components and filter small ones by area (absolute + relative)
-    h, w = img_boosted.shape[:2]
+    h, w = img.shape[:2]
     rel_min = int(h * w * rel_area_multiplier)
     min_area = max(int(min_pixels), rel_min)
 
@@ -103,7 +83,7 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
         blue_boxes = sorted(blue_boxes, key=lambda b: b[4], reverse=True)[:max_components]
 
     # Annotate the boosted image (not original)
-    out = img_boosted.copy()
+    out = img.copy()
     for (x, y, ww, hh, area) in red_boxes:
         cv2.rectangle(out, (x, y), (x+ww, y+hh), (0,0,255), 2)
     for (x, y, ww, hh, area) in blue_boxes:
@@ -113,20 +93,7 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
 
 
 def classify_target(red_boxes, blue_boxes):
-    """
-    Classify target based on detected red/blue boxes.
-    Returns tuple: (classification_string, target_type, is_hvt)
-    
-    Rules:
-    - No boxes: "No target"
-    - 1 blue: "Good soldier"
-    - 1 red: "Bad soldier"
-    - 2 blue: "Good soldier (HVT)"
-    - 2 red: "Bad soldier (HVT)"
-    - 1 red + 1 blue: compare areas -> larger wins
-    - 2 blue + 1 red: "Good soldier (HVT)"
-    - 2 red + 1 blue: "Bad soldier (HVT)"
-    """
+  
     num_red = len(red_boxes)
     num_blue = len(blue_boxes)
     
@@ -170,71 +137,7 @@ def classify_target(red_boxes, blue_boxes):
     # Fallback for any other combinations
     return "Uncertain classification", None, False
 
-
-def classify_target(red_boxes, blue_boxes):
-    """
-    Classify target based on detected red/blue boxes.
-    Returns tuple: (classification_string, target_type, is_hvt)
-    
-    Rules:
-    - No boxes: "No target"
-    - 1 blue: "Good soldier"
-    - 1 red: "Bad soldier"
-    - 2 blue: "Good soldier (HVT)"
-    - 2 red: "Bad soldier (HVT)"
-    - 1 red + 1 blue: compare areas -> larger wins
-    - 2 blue + 1 red: "Good soldier (HVT)"
-    - 2 red + 1 blue: "Bad soldier (HVT)"
-    """
-    num_red = len(red_boxes)
-    num_blue = len(blue_boxes)
-    
-    # No boxes found
-    if num_red == 0 and num_blue == 0:
-        return "No target", None, False
-    
-    # Normal cases - single color only
-    if num_blue > 0 and num_red == 0:
-        if num_blue == 1:
-            return "Good soldier", "good", False
-        elif num_blue == 2:
-            return "Good soldier (HVT)", "good", True
-    
-    if num_red > 0 and num_blue == 0:
-        if num_red == 1:
-            return "Bad soldier", "bad", False
-        elif num_red == 2:
-            return "Bad soldier (HVT)", "bad", True
-    
-    # Mixed cases - both colors present
-    # Case: 2 blue + 1 red
-    if num_blue == 2 and num_red == 1:
-        return "Good soldier (HVT)", "good", True
-    
-    # Case: 2 red + 1 blue
-    if num_red == 2 and num_blue == 1:
-        return "Bad soldier (HVT)", "bad", True
-    
-    # Case: 1 red + 1 blue -> compare areas
-    if num_red == 1 and num_blue == 1:
-        # boxes format: (x, y, w, h, area)
-        red_area = red_boxes[0][4]
-        blue_area = blue_boxes[0][4]
-        
-        if blue_area > red_area:
-            return "Good soldier (area-based)", "good", False
-        else:
-            return "Bad soldier (area-based)", "bad", False
-    
-    # Fallback for any other combinations
-    return "Uncertain classification", None, False
-
-
-def process_image(image_path):
-    img = cv2.imread(image_path)
-    if img is None:
-        raise ValueError(f"Could not read image at {image_path}")
-
+def crop_image(img):
     # --- vertical crop: remove top portion and keep a top block ---
     TOP_REMOVE_RATIO = 0.25  # remove top 25% of original
     TOP_KEEP_RATIO = 0.5     # keep up to 50% of original (rows start_row .. end_row)
@@ -254,15 +157,13 @@ def process_image(image_path):
     if left < right:
         img = img[:, left:right]
 
-    # Save cropped image to Output folder
-    output_dir = os.path.join(os.path.dirname(__file__), "Output")
-    os.makedirs(output_dir, exist_ok=True)
-    
-    base_name = os.path.basename(image_path)
-    name_without_ext = os.path.splitext(base_name)[0]
-    cropped_filename = f"{name_without_ext}_cropped.png"
-    cropped_path = os.path.join(output_dir, cropped_filename)
-    cv2.imwrite(cropped_path, img)
+
+def process_image(image_path):
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError(f"Could not read image at {image_path}")
+
+    img = crop_image(img)
 
     # blur color image (dynamic_blur handles multi-channel)
     blurred = dynamic_blur(img, scale=0.02, min_k=3, max_k=51)
@@ -301,45 +202,6 @@ def dynamic_blur(gray, scale=0.1, min_k=1, max_k=101):
         k = 3
     return cv2.GaussianBlur(gray, (k, k), 0)
 
-
-
-def detect_from_masks(img, mask_red, mask_blue, min_pixels=1, rel_area_multiplier=0.0005, max_components=2):
-    """
-    Run connected-component filtering on provided masks and annotate image.
-    Returns (annotated, mask_red, mask_blue, red_boxes, blue_boxes).
-    """
-    h, w = img.shape[:2]
-    rel_min = int(h * w * rel_area_multiplier)
-    min_area = max(int(min_pixels), rel_min)
-
-    def find_components(mask):
-        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-        boxes = []
-        for i in range(1, n):
-            area = int(stats[i, cv2.CC_STAT_AREA])
-            if area >= min_area:
-                x = int(stats[i, cv2.CC_STAT_LEFT])
-                y = int(stats[i, cv2.CC_STAT_TOP])
-                ww = int(stats[i, cv2.CC_STAT_WIDTH])
-                hh = int(stats[i, cv2.CC_STAT_HEIGHT])
-                boxes.append((x, y, ww, hh, area))
-        return boxes
-
-    red_boxes = find_components(mask_red)
-    blue_boxes = find_components(mask_blue)
-
-    if len(red_boxes) > max_components:
-        red_boxes = sorted(red_boxes, key=lambda b: b[4], reverse=True)[:max_components]
-    if len(blue_boxes) > max_components:
-        blue_boxes = sorted(blue_boxes, key=lambda b: b[4], reverse=True)[:max_components]
-
-    out = img.copy()
-    for (x, y, ww, hh, area) in red_boxes:
-        cv2.rectangle(out, (x, y), (x+ww, y+hh), (0,0,255), 2)
-    for (x, y, ww, hh, area) in blue_boxes:
-        cv2.rectangle(out, (x, y), (x+ww, y+hh), (255,0,0), 2)
-
-    return out, mask_red, mask_blue, red_boxes, blue_boxes
 
 def resize_and_pad(img, target_size=(800,600)):
     """
