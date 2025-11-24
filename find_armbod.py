@@ -164,9 +164,9 @@ def process_image(image_path):
     img = crop_image(img)
 
     # blur color image 
-    blurred = cv2.medianBlur(img, 3)
+    blurred = cv2.GaussianBlur(img, (5,5), 0)
 
-    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred, morph_kernel=(5,5), morph_iters=1)
+    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred, morph_kernel=(3,3), morph_iters=1)
     
     # Classify the target based on detected boxes
     classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
@@ -218,7 +218,7 @@ def show_images(paths, display_size=(800,600)):
             disp = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
         else:
             disp = out
-        disp = resize_and_pad(disp, target_size=display_size)
+        #disp = resize_and_pad(disp, target_size=display_size)
         cv2.imshow(win, disp)
         k = cv2.waitKey(0) & 0xFF
         if k == 27 or k == ord('q'):
@@ -228,4 +228,4 @@ def show_images(paths, display_size=(800,600)):
 if __name__ == "__main__":
     folder = "mili_med_og_uden_bond"
     image_paths = get_image_paths(folder)
-    show_images(image_paths, display_size=(800,600))
+    show_images(image_paths)#, display_size=(800,600))
