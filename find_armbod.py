@@ -180,26 +180,6 @@ def process_image(image_path):
     # return annotated image (you may also return masks if wanted)
     return annotated
 
-#def resize_and_pad(img, target_size=(800,600)):
-    """
-    Resize img to fit inside target_size while keeping aspect ratio.
-    Pads with black to exactly match target_size.
-    """
-    tgt_w, tgt_h = target_size
-    h, w = img.shape[:2]
-    if w == 0 or h == 0:
-        return np.zeros((tgt_h, tgt_w), dtype=img.dtype) if img.ndim == 2 else np.zeros((tgt_h, tgt_w, 3), dtype=img.dtype)
-    scale = min(tgt_w / w, tgt_h / h)
-    nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
-    resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
-    if resized.ndim == 2:
-        canvas = np.zeros((tgt_h, tgt_w), dtype=resized.dtype)
-    else:
-        canvas = np.zeros((tgt_h, tgt_w, 3), dtype=resized.dtype)
-    x = (tgt_w - nw) // 2
-    y = (tgt_h - nh) // 2
-    canvas[y:y+nh, x:x+nw] = resized
-    return canvas
 
 def show_images(paths):#display_size=(800,600)):
     if not paths:
