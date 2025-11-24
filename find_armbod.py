@@ -2,7 +2,6 @@ import os
 import cv2
 import numpy as np
 
-
 def get_image_paths(folder_path):
     folder_path = os.path.join(os.path.dirname(__file__), folder_path)
     if not os.path.isdir(folder_path):
@@ -22,7 +21,6 @@ def color_mask(hsv, lower, upper):
     m1 = cv2.inRange(hsv, np.array([lh, ls, lv], np.uint8), np.array([179, us, uv], np.uint8))
     m2 = cv2.inRange(hsv, np.array([0, ls, lv], np.uint8), np.array([uh, us, uv], np.uint8))
     return cv2.bitwise_or(m1, m2)
-
 
 def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2):
     """
@@ -87,7 +85,6 @@ def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area
         cv2.rectangle(out, (x, y), (x+ww, y+hh), (255,0,0), 2)
 
     return out, mask_red, mask_blue, red_boxes, blue_boxes
-
 
 def classify_target(red_boxes, blue_boxes):
   
@@ -155,7 +152,6 @@ def crop_image(img):
         img = img[:, left:right]
     return img
 
-
 def process_image(image_path):
     img = cv2.imread(image_path)
     if img is None:
@@ -179,7 +175,6 @@ def process_image(image_path):
     
     # return annotated image (you may also return masks if wanted)
     return annotated
-
 
 def show_images(paths):
     if not paths:
