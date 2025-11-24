@@ -167,7 +167,7 @@ def process_image(image_path):
     blurred = cv2.GaussianBlur(img, (3,3), 0)
     blurred2 = cv2.medianBlur(blurred, 3)
 
-    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred2, morph_kernel=(3,3), morph_iters=1)
+    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred2, morph_kernel=(5,5), morph_iters=1)
     
     # Classify the target based on detected boxes
     classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
