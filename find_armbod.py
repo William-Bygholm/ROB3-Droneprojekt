@@ -164,9 +164,10 @@ def process_image(image_path):
     img = crop_image(img)
 
     # blur color image 
-    blurred = cv2.medianBlur(img, 7)
+    blurred = cv2.medianBlur(img, 3)
+    blurred2 = cv2.GaussianBlur(blurred,(3,3),0)
 
-    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred, morph_kernel=(3,3), morph_iters=1)
+    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred2, morph_kernel=(3,3), morph_iters=1)
     
     # Classify the target based on detected boxes
     classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
