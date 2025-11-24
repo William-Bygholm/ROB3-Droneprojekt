@@ -56,7 +56,7 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
 
     # Find connected components and filter small ones by area (absolute + relative)
-    h, w = img.shape[:2]
+    h, w = hsv.shape[:2]
     rel_min = int(h * w * rel_area_multiplier)
     min_area = max(int(min_pixels), rel_min)
 
@@ -82,7 +82,7 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     if len(blue_boxes) > max_components:
         blue_boxes = sorted(blue_boxes, key=lambda b: b[4], reverse=True)[:max_components]
 
-    # Annotate the boosted image (not original)
+    # Annotate the boosted image
     out = img.copy()
     for (x, y, ww, hh, area) in red_boxes:
         cv2.rectangle(out, (x, y), (x+ww, y+hh), (0,0,255), 2)
@@ -156,6 +156,7 @@ def crop_image(img):
     right = int(w * (1.0 - WIDTH_REMOVE_RATIO))
     if left < right:
         img = img[:, left:right]
+    return img
 
 
 def process_image(image_path):
@@ -183,13 +184,13 @@ def process_image(image_path):
     return annotated
 
 
-def dynamic_blur(gray, scale=0.1, min_k=1, max_k=101):
+def dynamic_blur(img, scale=0.1, min_k=1, max_k=101):
     """
     Compute a Gaussian blur kernel proportional to image size.
     - scale: fraction of the smaller image dimension used for kernel (e.g. 0.02 = 2%)
     - min_k/max_k: bounds for kernel size (must be odd). Returns blurred image.
     """
-    h, w = gray.shape[:2]
+    h, w = img.shape[:2]
     k = max(min_k, int(min(h, w) * scale))
     if k % 2 == 0:
         k += 1
@@ -200,7 +201,7 @@ def dynamic_blur(gray, scale=0.1, min_k=1, max_k=101):
     # ensure sensible minimum
     if k < 3:
         k = 3
-    return cv2.GaussianBlur(gray, (k, k), 0)
+    return cv2.GaussianBlur(img, (k, k), 0)
 
 
 def resize_and_pad(img, target_size=(800,600)):
@@ -247,9 +248,3 @@ def show_images(paths, display_size=(800,600)):
         if k == 27 or k == ord('q'):
             break
     cv2.destroyAllWindows()
-
-# usage
-if __name__ == "__main__":
-    folder = "C:\\Users\\olafa\\Documents\\GitHub\\ROB3-Droneprojekt\\mili_med_og_uden_bond"  # specify your folder here
-    image_paths = get_image_paths(folder)
-    show_images(image_paths, display_size=(800,600))
