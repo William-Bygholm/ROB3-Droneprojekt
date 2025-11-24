@@ -24,13 +24,10 @@ def color_mask(hsv, lower, upper):
     return cv2.bitwise_or(m1, m2)
 
 
-def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2, boost_factor=1.5):
+def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2):
     """
     Return annotated image, counts, and masks for detected red and blue patches.
     Keeps only up to `max_components` largest components per color.
-
-    Parameters:
-    - boost_factor: multiplier applied to R or B channel in pixels that already pass threshold (e.g. 1.5).
     """
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
@@ -43,17 +40,17 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     blue_lower = np.array([100, 100, 50], dtype=np.uint8)
     blue_upper = np.array([130, 255, 255], dtype=np.uint8)
 
-    # Build initial masks
+    # Build masks
     mask_red = cv2.bitwise_or(color_mask(hsv, red_lower1, red_upper1),
                               color_mask(hsv, red_lower2, red_upper2))
     mask_blue = color_mask(hsv, blue_lower, blue_upper)
 
     # Morphological cleanup
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
-    mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
-    mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
-    mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
-    mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
+    #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
+    #mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
+    #mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
+    #mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
+    #mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
 
     # Find connected components and filter small ones by area (absolute + relative)
     h, w = hsv.shape[:2]
@@ -248,3 +245,8 @@ def show_images(paths, display_size=(800,600)):
         if k == 27 or k == ord('q'):
             break
     cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    folder = "mili_med_og_uden_bond"
+    image_paths = get_image_paths(folder)
+    show_images(image_paths, display_size=(800,600))
