@@ -26,7 +26,7 @@ def compute_histogram(img, target_size=(64, 128), center_y_ratio=0.4, center_x_r
     
     hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
     hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
-    hist = cv2.normalize(hist, hist).flatten()
+    hist = cv2.normalize(hist, hist)
     return hist
 
 def load_reference_histograms(base_dir):
@@ -95,7 +95,7 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
         print(f"No military match found. Best score: {best_score}")
         return "unknown"
 
-roi = cv2.imread('Billeder/Military long range 3.png')
+roi = cv2.imread('Billeder/Military close range.png')
 reference_histograms = load_reference_histograms("Reference templates")
 classification = classify_person(roi, reference_histograms, threshold_score=0.8)
 print(f"Classification: {classification}")
