@@ -164,8 +164,8 @@ def process_image(image_path):
     img = crop_image(img)
 
     # blur color image 
-    blurred = cv2.medianBlur(img, 3)
-    blurred2 = cv2.GaussianBlur(blurred,(3,3),0)
+    blurred = cv2.GaussianBlur(img, (3,3), 0)
+    blurred2 = cv2.medianBlur(blurred, 3)
 
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred2, morph_kernel=(3,3), morph_iters=1)
     
