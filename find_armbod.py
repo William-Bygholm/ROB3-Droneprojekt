@@ -46,11 +46,11 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     mask_blue = color_mask(hsv, blue_lower, blue_upper)
 
     # Morphological cleanup
-    #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
-    #mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
-    #mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
-    #mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
-    #mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
+    mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
+    mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
+    mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
+    mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
 
     # Find connected components and filter small ones by area (absolute + relative)
     h, w = hsv.shape[:2]
@@ -180,7 +180,7 @@ def process_image(image_path):
     # return annotated image (you may also return masks if wanted)
     return annotated
 
-def resize_and_pad(img, target_size=(800,600)):
+#def resize_and_pad(img, target_size=(800,600)):
     """
     Resize img to fit inside target_size while keeping aspect ratio.
     Pads with black to exactly match target_size.
@@ -201,7 +201,7 @@ def resize_and_pad(img, target_size=(800,600)):
     canvas[y:y+nh, x:x+nw] = resized
     return canvas
 
-def show_images(paths, display_size=(800,600)):
+def show_images(paths):#display_size=(800,600)):
     if not paths:
         print("No images found")
         return
