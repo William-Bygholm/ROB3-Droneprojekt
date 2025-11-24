@@ -24,7 +24,7 @@ def color_mask(hsv, lower, upper):
     return cv2.bitwise_or(m1, m2)
 
 
-def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2):
+def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2):
     """
     Return annotated image, counts, and masks for detected red and blue patches.
     Keeps only up to `max_components` largest components per color.
@@ -79,7 +79,7 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     if len(blue_boxes) > max_components:
         blue_boxes = sorted(blue_boxes, key=lambda b: b[4], reverse=True)[:max_components]
 
-    # Annotate the boosted image
+    # Annotate the image
     out = img.copy()
     for (x, y, ww, hh, area) in red_boxes:
         cv2.rectangle(out, (x, y), (x+ww, y+hh), (0,0,255), 2)
@@ -166,7 +166,7 @@ def process_image(image_path):
     # blur color image 
     blurred = cv2.GaussianBlur(img, (5,5), 0)
 
-    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred, morph_kernel=(3,3), morph_iters=1)
+    annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(blurred, morph_kernel=(3,3), morph_iters=1)
     
     # Classify the target based on detected boxes
     classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
