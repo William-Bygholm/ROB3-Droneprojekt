@@ -181,7 +181,7 @@ def process_image(image_path):
     return annotated
 
 
-def show_images(paths):#display_size=(800,600)):
+def show_images(paths):
     if not paths:
         print("No images found")
         return
@@ -198,7 +198,6 @@ def show_images(paths):#display_size=(800,600)):
             disp = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
         else:
             disp = out
-        #disp = resize_and_pad(disp, target_size=display_size)
         cv2.imshow(win, disp)
         k = cv2.waitKey(0) & 0xFF
         if k == 27 or k == ord('q'):
@@ -208,4 +207,4 @@ def show_images(paths):#display_size=(800,600)):
 if __name__ == "__main__":
     folder = "mili_med_og_uden_bond"
     image_paths = get_image_paths(folder)
-    show_images(image_paths)#, display_size=(800,600))
+    show_images(image_paths)
