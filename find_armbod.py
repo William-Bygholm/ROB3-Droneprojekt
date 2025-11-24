@@ -164,7 +164,7 @@ def process_image(image_path):
     img = crop_image(img)
 
     # blur color image (dynamic_blur handles multi-channel)
-    blurred = dynamic_blur(img, scale=0.02, min_k=3, max_k=51)
+    blurred = cv2.Blur(img, (7, 7)) #dynamic_blur(img, scale=0.02, min_k=3, max_k=51)
 
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred, morph_kernel=(3,3), morph_iters=1)
     
@@ -181,7 +181,7 @@ def process_image(image_path):
     return annotated
 
 
-def dynamic_blur(img, scale=0.1, min_k=1, max_k=101):
+#def dynamic_blur(img, scale=0.1, min_k=1, max_k=101):
     """
     Compute a Gaussian blur kernel proportional to image size.
     - scale: fraction of the smaller image dimension used for kernel (e.g. 0.02 = 2%)
