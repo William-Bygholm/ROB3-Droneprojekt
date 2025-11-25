@@ -16,7 +16,7 @@ SCALES = [1.0, 0.8, 0.64]
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
 NMS_THRESHOLD = 0.15
 DISPLAY_SCALE = 0.3
-FRAME_SKIP = 100
+FRAME_SKIP = 10
 SVM_THRESHOLD = 1
 
 # ---------------- LOAD MODEL ----------------
@@ -225,10 +225,10 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
 
     if best_score < threshold_score:
         print(f"Best score {best_score}")
-        return "soldier", best_score
+        return "soldier"
     else:
         print(f"No military match found. Best score: {best_score}")
-        return "unknown", best_score
+        return "unknown"
 
 # find armbånd her
 
@@ -382,52 +382,52 @@ def crop_image(img):
         img = img[:, left:right]
     return img
 
-def process_image(image_path):
-    img = cv2.imread(image_path)
-    if img is None:
-        raise ValueError(f"Could not read image at {image_path}")
+# def process_image(image_path):
+#     img = cv2.imread(image_path)
+#     if img is None:
+#         raise ValueError(f"Could not read image at {image_path}")
 
-    img = crop_image(img)
+#     img = crop_image(img)
 
-    # blur color image 
-    blurred = cv2.GaussianBlur(img, (5,5), 0)
+#     # blur color image 
+#     blurred = cv2.GaussianBlur(img, (5,5), 0)
 
-    annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(blurred, morph_kernel=(3,3), morph_iters=1)
+#     annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(blurred, morph_kernel=(3,3), morph_iters=1)
     
-    # Classify the target based on detected boxes
-    classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
+#     # Classify the target based on detected boxes
+#     classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
     
-    # Print classification to console
-    print(f"Image: {os.path.basename(image_path)}")
-    print(f"  Classification: {classification}")
-    print(f"  Red boxes: {len(red_boxes)} | Blue boxes: {len(blue_boxes)}")
-    print()
+#     # Print classification to console
+#     print(f"Image: {os.path.basename(image_path)}")
+#     print(f"  Classification: {classification}")
+#     print(f"  Red boxes: {len(red_boxes)} | Blue boxes: {len(blue_boxes)}")
+#     print()
     
-    # return annotated image (you may also return masks if wanted)
-    return annotated
+#     # return annotated image (you may also return masks if wanted)
+#     return annotated
 
-def show_images(paths):
-    if not paths:
-        print("No images found")
-        return
-    win = "Img"
-    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-    for p in paths:
-        try:
-            out = process_image(p)
-        except Exception as e:
-            print("skip:", p, e)
-            continue
-        # ensure 3-channel for consistent display
-        if out.ndim == 2:
-            disp = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
-        else:
-            disp = out
-        cv2.imshow(win, disp)
-        k = cv2.waitKey(0) & 0xFF
-        if k == 27 or k == ord('q'):
-            break
-    cv2.destroyAllWindows()
+# def show_images(paths):
+#     if not paths:
+#         print("No images found")
+#         return
+#     win = "Img"
+#     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+#     for p in paths:
+#         try:
+#             out = process_image(p)
+#         except Exception as e:
+#             print("skip:", p, e)
+#             continue
+#         # ensure 3-channel for consistent display
+#         if out.ndim == 2:
+#             disp = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
+#         else:
+#             disp = out
+#         cv2.imshow(win, disp)
+#         k = cv2.waitKey(0) & 0xFF
+#         if k == 27 or k == ord('q'):
+#             break
+#     cv2.destroyAllWindows()
 
 
 
@@ -469,7 +469,7 @@ while True:
             continue
         
         # Classify person as soldier or unknown
-        classification, score = classify_person(roi, reference_histograms, threshold_score=0.8)
+        classification = classify_person(roi, reference_histograms, threshold_score=0.8)
         
         if classification == "soldier":
             # Analyze for armbands
