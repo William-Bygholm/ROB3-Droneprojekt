@@ -385,8 +385,7 @@ def crop_image(img):
 
 
 # ---------------- VIDEO PROCESSING ----------------
-OUTPUT_DIR = "Output/Detections"  # Specify output folder here
-os.makedirs(OUTPUT_DIR, exist_ok=True)  # Create folder if it doesn't exist
+
 
 cap = cv2.VideoCapture(VIDEO_IN)
 frame_id = 0
