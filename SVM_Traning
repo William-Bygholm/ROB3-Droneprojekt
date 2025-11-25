@@ -1,0 +1,72 @@
+
+import os 
+import cv2
+import numpy as np
+from sklearn import svm
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
+import joblib
+from tqdm import tqdm 
+
+# ---------------- SETTINGS ----------------
+POS_DIR = r"C:\Users\alexa\Desktop\pos_output\Pos1"
+NEG_DIR = r"C:\Users\alexa\Desktop\Neg"
+MODEL_OUT = "svm_hog_model.pkl_v3"
+
+WIN_SIZE = (128, 256)  # square HOG window
+BLOCK_SIZE = (32, 32)
+BLOCK_STRIDE = (16, 16)
+CELL_SIZE = (8, 8)
+NBINS = 9
+
+# ---------------- HOG ----------------
+hog = cv2.HOGDescriptor(
+    _winSize=WIN_SIZE,
+    _blockSize=BLOCK_SIZE,
+    _blockStride=BLOCK_STRIDE,
+    _cellSize=CELL_SIZE,
+    _nbins=NBINS
+)
+
+# ---------------- HELPERS ----------------
+def load_images_and_extract_hog(folder, label, max_samples=None):
+    features, labels = [], []
+    files = [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".png", ".jpeg"))]
+    if max_samples and len(files) > max_samples:
+        files = np.random.choice(files, max_samples, replace=False)
+    for f in tqdm(files, desc=f"Loading {label}"):
+        img = cv2.imread(os.path.join(folder, f))
+        if img is None:
+            continue
+        if img.shape[:2] != WIN_SIZE[::-1]:  # ensure correct size
+            img = cv2.resize(img, WIN_SIZE)
+        features.append(hog.compute(img).flatten())
+        labels.append(label)
+    return features, labels
+
+# ---------------- LOAD DATA ----------------
+pos_features, pos_labels = load_images_and_extract_hog(POS_DIR, 1)
+neg_features, neg_labels = load_images_and_extract_hog(NEG_DIR, 0, max_samples=len(pos_features)*3)
+
+X = np.array(pos_features + neg_features)
+y = np.array(pos_labels + neg_labels)
+
+print(f"Loaded: {len(X)} samples (Pos: {len(pos_features)}, Neg: {len(neg_features)})")
+
+# ---------------- TRAIN/TEST SPLIT ----------------
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+# ---------------- TRAIN SVM ----------------
+clf = svm.LinearSVC(C=1.0, max_iter=10000, class_weight='balanced')
+clf.fit(X_train, y_train)
+print("Training done.")
+
+# ---------------- EVALUATE ----------------
+y_pred = clf.predict(X_test)
+acc = accuracy_score(y_test, y_pred)
+print(f"Test Accuracy: {acc*100:.2f}%")
+print(classification_report(y_test, y_pred, target_names=['Negative', 'Positive']))
+
+# ---------------- SAVE MODEL ----------------
+joblib.dump(clf, MODEL_OUT)
+print(f"SVM saved to: {MODEL_OUT}")
