@@ -358,6 +358,16 @@ def classify_target(red_boxes, blue_boxes):
         else:
             return "Bad soldier (area-based)", "bad", False
     
+    if num_red == 2 and num_blue == 2:
+        # Compare total areas
+        red_area = sum(box[4] for box in red_boxes)
+        blue_area = sum(box[4] for box in blue_boxes)
+        
+        if blue_area > red_area:
+            return "Good soldier (area-based, 2v2)", "good", True
+        else:
+            return "Bad soldier (area-based, 2v2)", "bad", True
+    
     # Fallback for any other combinations
     return "Uncertain classification", None, False
 
