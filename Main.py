@@ -382,57 +382,6 @@ def crop_image(img):
         img = img[:, left:right]
     return img
 
-# def process_image(image_path):
-#     img = cv2.imread(image_path)
-#     if img is None:
-#         raise ValueError(f"Could not read image at {image_path}")
-
-#     img = crop_image(img)
-
-#     # blur color image 
-#     blurred = cv2.GaussianBlur(img, (5,5), 0)
-
-#     annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(blurred, morph_kernel=(3,3), morph_iters=1)
-    
-#     # Classify the target based on detected boxes
-#     classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
-    
-#     # Print classification to console
-#     print(f"Image: {os.path.basename(image_path)}")
-#     print(f"  Classification: {classification}")
-#     print(f"  Red boxes: {len(red_boxes)} | Blue boxes: {len(blue_boxes)}")
-#     print()
-    
-#     # return annotated image (you may also return masks if wanted)
-#     return annotated
-
-# def show_images(paths):
-#     if not paths:
-#         print("No images found")
-#         return
-#     win = "Img"
-#     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-#     for p in paths:
-#         try:
-#             out = process_image(p)
-#         except Exception as e:
-#             print("skip:", p, e)
-#             continue
-#         # ensure 3-channel for consistent display
-#         if out.ndim == 2:
-#             disp = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
-#         else:
-#             disp = out
-#         cv2.imshow(win, disp)
-#         k = cv2.waitKey(0) & 0xFF
-#         if k == 27 or k == ord('q'):
-#             break
-#     cv2.destroyAllWindows()
-
-
-
-
-
 
 # ---------------- VIDEO PROCESSING ----------------
 OUTPUT_DIR = "Output/Detections"  # Specify output folder here
