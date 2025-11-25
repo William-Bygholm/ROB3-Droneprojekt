@@ -93,9 +93,9 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
         return best_label
     else:
         print(f"No military match found. Best score: {best_score}")
-        return "unknown"
+        return "Civilian"
 
-roi = cv2.imread('Billeder/Military close range.png')
+roi = cv2.imread('Billeder/Civilian close range.png')
 reference_histograms = load_reference_histograms("Reference templates")
 classification = classify_person(roi, reference_histograms, threshold_score=0.8)
 print(f"Classification: {classification}")
