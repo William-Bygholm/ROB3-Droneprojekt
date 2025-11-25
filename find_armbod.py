@@ -2,7 +2,6 @@ import os
 import cv2
 import numpy as np
 
-
 def get_image_paths(folder_path):
     folder_path = os.path.join(os.path.dirname(__file__), folder_path)
     if not os.path.isdir(folder_path):
@@ -23,8 +22,7 @@ def color_mask(hsv, lower, upper):
     m2 = cv2.inRange(hsv, np.array([0, ls, lv], np.uint8), np.array([uh, us, uv], np.uint8))
     return cv2.bitwise_or(m1, m2)
 
-
-def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2):
+def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2):
     """
     Return annotated image, counts, and masks for detected red and blue patches.
     Keeps only up to `max_components` largest components per color.
@@ -46,11 +44,11 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     mask_blue = color_mask(hsv, blue_lower, blue_upper)
 
     # Morphological cleanup
-    #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
-    #mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
-    #mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
-    #mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
-    #mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
+    mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
+    mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
+    mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel, iterations=morph_iters)
+    mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel, iterations=morph_iters)
 
     # Find connected components and filter small ones by area (absolute + relative)
     h, w = hsv.shape[:2]
@@ -79,7 +77,7 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
     if len(blue_boxes) > max_components:
         blue_boxes = sorted(blue_boxes, key=lambda b: b[4], reverse=True)[:max_components]
 
-    # Annotate the boosted image
+    # Annotate the image
     out = img.copy()
     for (x, y, ww, hh, area) in red_boxes:
         cv2.rectangle(out, (x, y), (x+ww, y+hh), (0,0,255), 2)
@@ -87,7 +85,6 @@ def remove_background_and_count(img, morph_kernel=(3,3), morph_iters=1, min_pixe
         cv2.rectangle(out, (x, y), (x+ww, y+hh), (255,0,0), 2)
 
     return out, mask_red, mask_blue, red_boxes, blue_boxes
-
 
 def classify_target(red_boxes, blue_boxes):
   
@@ -155,7 +152,6 @@ def crop_image(img):
         img = img[:, left:right]
     return img
 
-
 def process_image(image_path):
     img = cv2.imread(image_path)
     if img is None:
@@ -163,10 +159,10 @@ def process_image(image_path):
 
     img = crop_image(img)
 
-    # blur color image (dynamic_blur handles multi-channel)
-    blurred = cv2.Blur(img, (7, 7)) #dynamic_blur(img, scale=0.02, min_k=3, max_k=51)
+    # blur color image 
+    blurred = cv2.GaussianBlur(img, (5,5), 0)
 
-    annotated, mask_red, mask_blue, red_boxes, blue_boxes = remove_background_and_count(blurred, morph_kernel=(3,3), morph_iters=1)
+    annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(blurred, morph_kernel=(3,3), morph_iters=1)
     
     # Classify the target based on detected boxes
     classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
@@ -180,49 +176,7 @@ def process_image(image_path):
     # return annotated image (you may also return masks if wanted)
     return annotated
 
-
-#def dynamic_blur(img, scale=0.1, min_k=1, max_k=101):
-    """
-    Compute a Gaussian blur kernel proportional to image size.
-    - scale: fraction of the smaller image dimension used for kernel (e.g. 0.02 = 2%)
-    - min_k/max_k: bounds for kernel size (must be odd). Returns blurred image.
-    """
-    h, w = img.shape[:2]
-    k = max(min_k, int(min(h, w) * scale))
-    if k % 2 == 0:
-        k += 1
-    # ensure max_k odd
-    if max_k % 2 == 0:
-        max_k -= 1
-    k = min(k, max_k)
-    # ensure sensible minimum
-    if k < 3:
-        k = 3
-    return cv2.GaussianBlur(img, (k, k), 0)
-
-
-def resize_and_pad(img, target_size=(800,600)):
-    """
-    Resize img to fit inside target_size while keeping aspect ratio.
-    Pads with black to exactly match target_size.
-    """
-    tgt_w, tgt_h = target_size
-    h, w = img.shape[:2]
-    if w == 0 or h == 0:
-        return np.zeros((tgt_h, tgt_w), dtype=img.dtype) if img.ndim == 2 else np.zeros((tgt_h, tgt_w, 3), dtype=img.dtype)
-    scale = min(tgt_w / w, tgt_h / h)
-    nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
-    resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
-    if resized.ndim == 2:
-        canvas = np.zeros((tgt_h, tgt_w), dtype=resized.dtype)
-    else:
-        canvas = np.zeros((tgt_h, tgt_w, 3), dtype=resized.dtype)
-    x = (tgt_w - nw) // 2
-    y = (tgt_h - nh) // 2
-    canvas[y:y+nh, x:x+nw] = resized
-    return canvas
-
-def show_images(paths, display_size=(800,600)):
+def show_images(paths):
     if not paths:
         print("No images found")
         return
@@ -239,7 +193,6 @@ def show_images(paths, display_size=(800,600)):
             disp = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
         else:
             disp = out
-        disp = resize_and_pad(disp, target_size=display_size)
         cv2.imshow(win, disp)
         k = cv2.waitKey(0) & 0xFF
         if k == 27 or k == ord('q'):
@@ -249,4 +202,4 @@ def show_images(paths, display_size=(800,600)):
 if __name__ == "__main__":
     folder = "mili_med_og_uden_bond"
     image_paths = get_image_paths(folder)
-    show_images(image_paths, display_size=(800,600))
+    show_images(image_paths)
