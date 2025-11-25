@@ -7,7 +7,6 @@ import os
 
 
 # HOG + SVM her
-
  
 VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
 MODEL_FILE = "svm_hog_model.pkl_v3"
@@ -232,14 +231,6 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
 
 # find armbånd her
 
-def get_image_paths(folder_path):
-    folder_path = os.path.join(os.path.dirname(__file__), folder_path)
-    if not os.path.isdir(folder_path):
-        raise ValueError(f"The folder path '{folder_path}' is not a valid directory.")
-    files = sorted(os.listdir(folder_path))
-    image_paths = [os.path.join(folder_path, f) for f in files
-                   if os.path.splitext(f)[1].lower() in [".png", ".jpg", ".jpeg"]]
-    return image_paths
 
 def color_mask(hsv, lower, upper):
     """Handle hue wrap-around when creating an inRange mask."""
