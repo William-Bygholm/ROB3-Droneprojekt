@@ -10,7 +10,7 @@ SCALES = [1.0, 0.8, 0.64]
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
 NMS_THRESHOLD = 0.15
 DISPLAY_SCALE = 0.3
-FRAME_SKIP = 20
+FRAME_SKIP = 100
 SVM_THRESHOLD = 1
 
 # ---------------- LOAD MODEL ----------------
