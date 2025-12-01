@@ -4,7 +4,7 @@ import joblib
 import numpy as np 
  
 VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
-MODEL_FILE = "svm_hog_model.pkl_v3"
+MODEL_FILE =   "person_detector_svm_model.pkl"
 WINDOW_SIZE = (128, 256)
 SCALES = [1.0, 0.8, 0.64]
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
