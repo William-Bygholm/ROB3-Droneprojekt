@@ -14,8 +14,8 @@ import seaborn as sns
 
 # Configuration
 TEST_DATA = {
-    'video': r"ProjektVideoer/2 militær med blå bånd .MP4",
-    'json': r"Validation/2 mili med blå bond.json"
+    'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
+    'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
 }
 
 # Class mapping from COCO attributes to our classification
@@ -181,6 +181,15 @@ def test_video(video_path, ground_truth, sample_every_n=1):
                 
                 # Store result
                 gt_class = ann['class']
+                
+                # Print classification decision
+                #print(f"\n  Frame {frame_idx}, Track {ann['track_id']}:")
+                #print(f"    Ground Truth: {gt_class}")
+                #print(f"    Predicted: {pred_class} (confidence: {confidence:.2f})")
+                #print(f"    Details: {details['classification']}")
+                #print(f"    Red boxes: {details['red_boxes']}, Blue boxes: {details['blue_boxes']}, HVT: {details['is_hvt']}")
+                #print(f"    Match: {'✓' if pred_class == gt_class else '✗'}")
+                
                 predictions.append({
                     'frame': frame_idx,
                     'track_id': ann['track_id'],
@@ -298,11 +307,15 @@ def evaluate_predictions(predictions, output_dir="Output"):
         
         plt.figure(figsize=(10, 6))
         plt.plot(recall_curve, precision_curve, linewidth=2, label=f'AP = {avg_precision:.3f}')
-        plt.xlabel('Recall')
-        plt.ylabel('Precision')
-        plt.title('Precision-Recall Curve (Good Soldier Detection)')
+        plt.xlabel('Recall', fontsize=12)
+        plt.ylabel('Precision', fontsize=12)
+        plt.title('Precision-Recall Curve (Good Soldier Detection)', fontsize=14)
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xticks(np.arange(0, 1.1, 0.01))  # 100 steps on x-axis
+        plt.yticks(np.arange(0, 1.1, 0.05))  # 20 steps on y-axis
         plt.grid(True, alpha=0.3)
-        plt.legend()
+        plt.legend(fontsize=11)
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, 'precision_recall_curve.png'), dpi=150)
         print(f"\nAverage Precision (Good): {avg_precision:.3f}")
