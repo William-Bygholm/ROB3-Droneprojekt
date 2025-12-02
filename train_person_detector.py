@@ -24,6 +24,9 @@ TRAINING_DATA = [
         'json': r"Træning/Civil person.json"
     }
 ]
+# Additional positive samples from external folder
+ADDITIONAL_POSITIVES_DIR = r"D:\Pos"  # Set to None to skip
+
 OUTPUT_MODEL = "person_detector_trained.pkl"
 WINDOW_SIZE = (128, 256)  # Standard HOG window size for person detection
 NEGATIVE_SAMPLES_PER_FRAME = 5  # How many negative samples to extract per frame
@@ -133,6 +136,52 @@ class PersonDetectorTrainer:
             features.append(hog_features.ravel())
         
         return np.array(features)
+    
+    def load_positive_images_from_folder(self, folder_path):
+        """Load positive samples from a folder of images"""
+        if not os.path.exists(folder_path):
+            print(f"WARNING: Folder not found: {folder_path}")
+            return
+        
+        print(f"\nLoading positive samples from: {folder_path}")
+        
+        # Supported image extensions
+        extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif']
+        
+        loaded_count = 0
+        skipped_count = 0
+        
+        # Walk through all files in the folder and subfolders
+        for root, dirs, files in os.walk(folder_path):
+            for filename in files:
+                file_ext = os.path.splitext(filename)[1].lower()
+                if file_ext not in extensions:
+                    continue
+                
+                file_path = os.path.join(root, filename)
+                
+                # Load image
+                img = cv2.imread(file_path)
+                if img is None:
+                    skipped_count += 1
+                    continue
+                
+                # Resize to standard window size
+                try:
+                    resized = cv2.resize(img, self.window_size)
+                    self.positive_samples.append(resized)
+                    loaded_count += 1
+                    
+                    if loaded_count % 100 == 0:
+                        print(f"Loaded {loaded_count} images...")
+                        
+                except Exception as e:
+                    skipped_count += 1
+                    continue
+        
+        print(f"Loaded {loaded_count} positive samples from folder")
+        if skipped_count > 0:
+            print(f"Skipped {skipped_count} files (invalid or unreadable)")
     
     def collect_training_data(self, video_path, frame_annotations, sample_every_n_frames=1):
         """Collect positive and negative samples from video"""
@@ -288,6 +337,13 @@ def main():
         
         # Collect training data from this video (use ALL frames)
         trainer.collect_training_data(video_path, frame_annotations, sample_every_n_frames=1)
+    
+    # Load additional positive samples from external folder
+    if ADDITIONAL_POSITIVES_DIR and os.path.exists(ADDITIONAL_POSITIVES_DIR):
+        print(f"\n{'='*60}")
+        print("Loading additional positive samples from external folder")
+        print('='*60)
+        trainer.load_positive_images_from_folder(ADDITIONAL_POSITIVES_DIR)
     
     # Check if we have enough data across all videos
     print(f"\n{'='*60}")
