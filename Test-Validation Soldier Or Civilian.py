@@ -95,11 +95,12 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
 
     if best_score < threshold_score:
         print(f"Best score {best_score}")
+        print(f"Classification: {best_label}")
         return best_label
     else:
         print(f"No military match found. Best score: {best_score}")
+        print(f"Classification: Civilian")
         return "Civilian"
-
 
 
 # Validation and test
