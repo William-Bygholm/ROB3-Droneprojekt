@@ -4,17 +4,31 @@ import joblib
 import numpy as np 
  
 VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
-MODEL_FILE =   "C:\\Users\\olafa\\Documents\\GitHub\\ROB3-Droneprojekt\\person_detector_trained.pkl"
-WINDOW_SIZE = (128, 256)
+MODEL_FILE = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\person_detector_trained.pkl"
+
+# ---------------- LOAD MODEL ----------------
+print("Loading model...")
+model_data = joblib.load(MODEL_FILE)
+
+# Extract classifier and HOG parameters from saved model
+if isinstance(model_data, dict):
+    clf = model_data['classifier']
+    hog_params = model_data['hog_params']
+    WINDOW_SIZE = hog_params['winSize']
+    print(f"Loaded trained model with window size: {WINDOW_SIZE}")
+else:
+    # Old format compatibility
+    clf = model_data
+    WINDOW_SIZE = (128, 256)
+    print("Loaded old format model")
+
+# Set parameters based on window size
 SCALES = [1.0, 0.8, 0.64]
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
 NMS_THRESHOLD = 0.15
 DISPLAY_SCALE = 0.3
-FRAME_SKIP = 100
-SVM_THRESHOLD = 1
-
-# ---------------- LOAD MODEL ----------------
-clf = joblib.load(MODEL_FILE) 
+FRAME_SKIP = 10
+SVM_THRESHOLD = 0.5  # Start with 0 for newly trained model
 
 hog = cv2.HOGDescriptor(
     _winSize=WINDOW_SIZE,
