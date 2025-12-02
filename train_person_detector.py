@@ -246,7 +246,7 @@ class PersonDetectorTrainer:
         print(f"Total positive samples: {len(self.positive_samples)}")
         print(f"Total negative samples: {len(self.negative_samples)}")
     
-    def train_svm(self, test_size=0.2, C=0.01):
+    def train_svm(self, test_size=0.2, C=0.1):
         """Train SVM classifier"""
         print("\nExtracting HOG features...")
         
