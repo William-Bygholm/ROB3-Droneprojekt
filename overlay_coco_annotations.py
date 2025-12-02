@@ -3,8 +3,8 @@ import json
 import os
 
 # Configuration
-VIDEO_PATH = r"ProjektVideoer/3 mili 2 onde 1 god.MP4"  # Update with your video filename
-COCO_JSON = "3mili 2 onde 1 god.json"
+VIDEO_PATH = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"  # Update with your video filename
+COCO_JSON = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
 OUTPUT_VIDEO = "Output/annotated_video.mp4"
 
 # Colors for different classes (BGR format)
