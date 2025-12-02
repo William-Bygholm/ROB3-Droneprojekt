@@ -53,31 +53,6 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def show_crop_overlay(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
-    """
-    A function only to test and visualize the cropping area used in compute_histogram.
-    """
-    img = cv2.resize(img, target_size)
-    h, w = img.shape[:2]
-
-    crop_h = max(1, int(h * height_ratio))
-    crop_w = max(1, int(w * width_ratio))
-    y_center = int(h * center_y_ratio)
-    x_center = int(w * center_x_ratio)
-
-    y_start = max(0, y_center - crop_h // 2)
-    y_end   = min(h, y_start + crop_h)
-    x_start = max(0, x_center - crop_w // 2)
-    x_end   = min(w, x_start + crop_w)
-
-    # Tegn grøn boks
-    overlay = img.copy()
-    cv2.rectangle(overlay, (x_start, y_start), (x_end, y_end), (0, 255, 0), 2)
-
-    cv2.imshow("Crop Overlay", overlay)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
 def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.3):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
