@@ -3,7 +3,7 @@ import cv2
 import joblib
 import numpy as np 
  
-VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd.MP4"
+VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
 MODEL_FILE = "svm_hog_model.pkl_v3"
 WINDOW_SIZE = (128, 256)
 SCALES = [1.0, 0.8, 0.64]
