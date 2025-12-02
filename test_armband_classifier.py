@@ -305,15 +305,21 @@ def evaluate_predictions(predictions, output_dir="Output"):
         precision_curve, recall_curve, thresholds = precision_recall_curve(y_true_numeric, y_score)
         avg_precision = average_precision_score(y_true_numeric, y_score)
         
+        # Print unique confidence values to show discrete nature
+        unique_confs = sorted(set(y_score))
+        print(f"Unique confidence values: {unique_confs}")
+        print(f"Number of unique thresholds: {len(unique_confs)}")
+        
         plt.figure(figsize=(10, 6))
-        plt.plot(recall_curve, precision_curve, linewidth=2, label=f'AP = {avg_precision:.3f}')
+        # Plot line with markers to show discrete points
+        plt.plot(recall_curve, precision_curve, linewidth=2, label=f'AP = {avg_precision:.3f}', marker='o', markersize=6, markevery=max(1, len(recall_curve)//20))
         plt.xlabel('Recall', fontsize=12)
         plt.ylabel('Precision', fontsize=12)
         plt.title('Precision-Recall Curve (Good Soldier Detection)', fontsize=14)
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
-        plt.xticks(np.arange(0, 1.1, 0.01))  # 100 steps on x-axis
-        plt.yticks(np.arange(0, 1.1, 0.05))  # 20 steps on y-axis
+        plt.xticks(np.arange(0, 1.1, 0.1))  # 10 steps on x-axis
+        plt.yticks(np.arange(0, 1.1, 0.1))  # 10 steps on y-axis
         plt.grid(True, alpha=0.3)
         plt.legend(fontsize=11)
         plt.tight_layout()
