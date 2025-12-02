@@ -15,18 +15,18 @@ from pathlib import Path
 
 # Configuration
 VIDEO_PATH = r"ProjektVideoer/3 mili 2 onde 1 god.MP4"
-COCO_JSON = "instances_default.json"
+COCO_JSON = "3mili 2 onde 1 god.json"
 OUTPUT_MODEL = "person_detector_trained.pkl"
-WINDOW_SIZE = (64, 128)  # Standard HOG window size for person detection
+WINDOW_SIZE = (128, 256)  # Standard HOG window size for person detection
 NEGATIVE_SAMPLES_PER_FRAME = 5  # How many negative samples to extract per frame
 
 class PersonDetectorTrainer:
-    def __init__(self, window_size=(64, 128)):
+    def __init__(self, window_size=(128, 256)):
         self.window_size = window_size
         self.hog = cv2.HOGDescriptor(
             _winSize=window_size,
-            _blockSize=(16, 16),
-            _blockStride=(8, 8),
+            _blockSize=(32, 32),
+            _blockStride=(16, 16),
             _cellSize=(8, 8),
             _nbins=9
         )
