@@ -357,7 +357,7 @@ def main():
         return
     
     # Train model on combined data from all videos
-    clf = trainer.train_svm(test_size=0.2, C=0.01)
+    clf = trainer.train_svm(test_size=0.2, C=0.1)
     
     # Save model
     trainer.save_model(clf, OUTPUT_MODEL)
