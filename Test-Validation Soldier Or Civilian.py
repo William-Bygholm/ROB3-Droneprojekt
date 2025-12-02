@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import os
 import json
+from sklearn.metrics import classification_report, confusion_matrix
 
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
@@ -186,4 +187,75 @@ def show_video_with_annotations(video_path=VIDEO_PATH, json_path=COCO_JSON, id_o
     cap.release()
     cv2.destroyAllWindows()
 
-show_video_with_annotations()
+
+def test_classification_on_video(video_path=VIDEO_PATH, json_path=COCO_JSON, id_offsets=(0, 1)):
+    """
+    Function to test and validate the classification algorithm on a video with annotations
+    in JSON COCO format.
+    """
+    # Load JSON
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    # Map image_id -> annotations
+    frame_annotations = {}
+    for ann in data.get("annotations", []):
+        image_id = ann.get("image_id")
+        if image_id is None:
+            continue
+        frame_annotations.setdefault(image_id, []).append(ann)
+    
+    # Load video
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: Cannot open video {video_path}")
+        return
+    y_true, y_pred = [], []
+    frame_idx = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Find annotations for this frame
+        anns = []
+        for off in id_offsets:
+            img_id = frame_idx + off
+            if img_id in frame_annotations:
+                anns = frame_annotations[img_id]
+                break
+        
+        # Run classifier on each ROI
+        for ann in anns:
+            bbox = ann["bbox"] # COCO-format: [x, y, w, h]
+
+            x, y, w, h = [int(v) for v in bbox]
+            roi = frame[y:y+h, x:x+w]
+
+            # Ground truth label
+            attrs = ann.get("attributes", {})
+            true_label = "Unknown person"
+            for cname, active in attrs.items():
+                if active:
+                    true_label = cname
+                    break
+            
+            pred_label = classify_person(roi, reference_histograms)
+
+            y_true.append(true_label)
+            y_pred.append(pred_label)
+        
+        frame_idx += 1
+    
+    cap.release()
+
+    # Calculate and print metrics
+    print("Classification Report:")
+    print(classification_report(y_true, y_pred))
+    print("Confusion Matrix:")
+    print(confusion_matrix(y_true, y_pred))
+
+# Main
+reference_histograms = load_reference_histograms("Reference templates")
+test_classification_on_video()
