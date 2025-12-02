@@ -4,7 +4,7 @@ import joblib
 import numpy as np 
  
 VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
-MODEL_FILE = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\person_detector_trained.pkl"
+MODEL_FILE = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\person_detector_trained.pkl"
 
 # ---------------- LOAD MODEL ----------------
 print("Loading model...")
@@ -142,35 +142,35 @@ def detect_people(frame, clf, hog):
 
 
 # ---------------- VIDEO PROCESSING ----------------
-cap = cv2.VideoCapture(VIDEO_IN)
-frame_id = 0
+if __name__ == "__main__":
+    cap = cv2.VideoCapture(VIDEO_IN)
+    frame_id = 0
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    frame_id += 1
-    if frame_id % FRAME_SKIP != 0:
-        continue
+        frame_id += 1
+        if frame_id % FRAME_SKIP != 0:
+            continue
 
-    # Detect people and get bounding boxes
-    final_boxes = detect_people(frame, clf, hog)
+        # Detect people and get bounding boxes
+        final_boxes = detect_people(frame, clf, hog)
 
-    # Draw boxes on frame
-    orig_frame = frame.copy()
-    for (x1, y1, x2, y2) in final_boxes:
-        cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        # Draw boxes on frame
+        orig_frame = frame.copy()
+        for (x1, y1, x2, y2) in final_boxes:
+            cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
-    # TODO: You can now pass final_boxes to other functions for further analysis
-    # Example: analyze_armbands(frame, final_boxes)
+        # TODO: You can now pass final_boxes to other functions for further analysis
+        # Example: analyze_armbands(frame, final_boxes)
 
-    display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
-    cv2.imshow("HOG+SVM Detector", display_frame)
+        display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
+    #   cv2.imshow("HOG+SVM Detector", display_frame)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    #    if cv2.waitKey(1) & 0xFF == ord('q'):
+    #        break
 
-
-cap.release()
-cv2.destroyAllWindows()
+    cap.release()
+    cv2.destroyAllWindows()
