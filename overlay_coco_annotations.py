@@ -4,7 +4,7 @@ import os
 
 # Configuration
 VIDEO_PATH = r"ProjektVideoer/3 mili 2 onde 1 god.MP4"  # Update with your video filename
-COCO_JSON = "instances_default.json"
+COCO_JSON = "3mili 2 onde 1 god.json"
 OUTPUT_VIDEO = "Output/annotated_video.mp4"
 
 # Colors for different classes (BGR format)
