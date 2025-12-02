@@ -28,7 +28,7 @@ STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
 NMS_THRESHOLD = 0.05
 DISPLAY_SCALE = 0.3
 FRAME_SKIP = 20
-SVM_THRESHOLD = 1.0  # Start with 0 for newly trained model
+SVM_THRESHOLD = 0.2  # Start with 0 for newly trained model
 
 hog = cv2.HOGDescriptor(
     _winSize=WINDOW_SIZE,
