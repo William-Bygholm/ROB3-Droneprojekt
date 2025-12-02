@@ -13,9 +13,17 @@ from sklearn.metrics import classification_report, confusion_matrix
 import joblib
 from pathlib import Path
 
-# Configuration
-VIDEO_PATH = r"ProjektVideoer/3 mili 2 onde 1 god.MP4"
-COCO_JSON = "3mili 2 onde 1 god.json"
+# Configuration - Multiple videos and annotations
+TRAINING_DATA = [
+    {
+        'video': r"ProjektVideoer/2 mili der ligger ned og 1 civil.MP4",
+        'json': r"Træning/2 mili der ligger ned og 1 civil.json"
+    },
+    {
+        'video': r"ProjektVideoer/Civil person.MP4",
+        'json': r"Træning/Civil person.json"
+    }
+]
 OUTPUT_MODEL = "person_detector_trained.pkl"
 WINDOW_SIZE = (128, 256)  # Standard HOG window size for person detection
 NEGATIVE_SAMPLES_PER_FRAME = 5  # How many negative samples to extract per frame
@@ -126,7 +134,7 @@ class PersonDetectorTrainer:
         
         return np.array(features)
     
-    def collect_training_data(self, video_path, frame_annotations, sample_every_n_frames=5):
+    def collect_training_data(self, video_path, frame_annotations, sample_every_n_frames=1):
         """Collect positive and negative samples from video"""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -134,24 +142,37 @@ class PersonDetectorTrainer:
         
         frame_idx = 0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        frames_with_annotations = 0
         
-        print(f"Collecting training data from {total_frames} frames...")
+        # Find the annotation ID range to determine offset
+        if frame_annotations:
+            min_id = min(frame_annotations.keys())
+            max_id = max(frame_annotations.keys())
+            print(f"Annotation IDs range: {min_id} to {max_id}")
+            print(f"Total frames in video: {total_frames}")
+            print(f"Annotated frames available: {len(frame_annotations)}")
+        
+        print(f"\nCollecting training data from all frames...")
         
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
             
-            # Only process every Nth frame to speed up
+            # Only process every Nth frame to speed up (default=1 means all frames)
             if frame_idx % sample_every_n_frames != 0:
                 frame_idx += 1
                 continue
             
             # Find annotations for this frame (try different offsets)
             matching_annotations = []
-            for possible_id in [frame_idx, frame_idx + 1, 3720 + frame_idx]:
+            # Try direct match and common offsets
+            for possible_id in [frame_idx, frame_idx + 1, frame_idx - 1, 
+                               3720 + frame_idx, 3726 + frame_idx, 
+                               min_id + frame_idx]:
                 if possible_id in frame_annotations:
                     matching_annotations = frame_annotations[possible_id]
+                    frames_with_annotations += 1
                     break
             
             if matching_annotations:
@@ -163,8 +184,9 @@ class PersonDetectorTrainer:
                 negatives = self.extract_negative_samples(frame, matching_annotations, NEGATIVE_SAMPLES_PER_FRAME)
                 self.negative_samples.extend(negatives)
                 
-                if frame_idx % 100 == 0:
+                if frame_idx % 50 == 0:
                     print(f"Frame {frame_idx}/{total_frames}: "
+                          f"Matched {frames_with_annotations} frames, "
                           f"Positives: {len(self.positive_samples)}, "
                           f"Negatives: {len(self.negative_samples)}")
             
@@ -241,20 +263,44 @@ def main():
     # Initialize trainer
     trainer = PersonDetectorTrainer(window_size=WINDOW_SIZE)
     
-    # Load annotations
-    print("Loading annotations...")
-    frame_annotations, images = trainer.load_annotations(COCO_JSON)
-    print(f"Loaded {len(frame_annotations)} annotated frames")
+    # Process each video/annotation pair
+    for idx, data_pair in enumerate(TRAINING_DATA, 1):
+        video_path = data_pair['video']
+        json_path = data_pair['json']
+        
+        print(f"\n{'='*60}")
+        print(f"Processing dataset {idx}/{len(TRAINING_DATA)}")
+        print(f"Video: {video_path}")
+        print(f"Annotations: {json_path}")
+        print('='*60)
+        
+        # Check if files exist
+        if not os.path.exists(video_path):
+            print(f"WARNING: Video not found: {video_path}")
+            continue
+        if not os.path.exists(json_path):
+            print(f"WARNING: Annotation file not found: {json_path}")
+            continue
+        
+        # Load annotations for this video
+        frame_annotations, images = trainer.load_annotations(json_path)
+        print(f"Loaded {len(frame_annotations)} annotated frames")
+        
+        # Collect training data from this video (use ALL frames)
+        trainer.collect_training_data(video_path, frame_annotations, sample_every_n_frames=1)
     
-    # Collect training data
-    trainer.collect_training_data(VIDEO_PATH, frame_annotations, sample_every_n_frames=3)
+    # Check if we have enough data across all videos
+    print(f"\n{'='*60}")
+    print("TOTAL DATA COLLECTED:")
+    print(f"Positive samples: {len(trainer.positive_samples)}")
+    print(f"Negative samples: {len(trainer.negative_samples)}")
+    print('='*60)
     
-    # Check if we have enough data
     if len(trainer.positive_samples) < 10:
         print("\nERROR: Not enough positive samples! Check frame ID mapping.")
         return
     
-    # Train model
+    # Train model on combined data from all videos
     clf = trainer.train_svm(test_size=0.2, C=0.01)
     
     # Save model
