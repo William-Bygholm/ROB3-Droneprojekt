@@ -198,12 +198,56 @@ print('='*60)
 scores = np.array(all_scores)
 labels = np.array(all_labels)
 
+# ---------------- FIND BEST THRESHOLD ----------------
+from sklearn.metrics import f1_score
+
+# Calculate F1 score for different thresholds
+thresholds = np.linspace(scores.min(), scores.max(), 100)
+f1_scores = []
+
+for threshold in thresholds:
+    predictions = (scores >= threshold).astype(int)
+    f1 = f1_score(labels, predictions)
+    f1_scores.append(f1)
+
+# Find best threshold
+best_idx = np.argmax(f1_scores)
+best_threshold = thresholds[best_idx]
+best_f1 = f1_scores[best_idx]
+
+# Calculate metrics at best threshold
+best_predictions = (scores >= best_threshold).astype(int)
+tp = np.sum((labels == 1) & (best_predictions == 1))
+fp = np.sum((labels == 0) & (best_predictions == 1))
+fn = np.sum((labels == 1) & (best_predictions == 0))
+tn = np.sum((labels == 0) & (best_predictions == 0))
+
+precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+accuracy = (tp + tn) / len(labels)
+
+print(f"\n{'='*60}")
+print("OPTIMAL THRESHOLD ANALYSIS")
+print('='*60)
+print(f"Best Threshold: {best_threshold:.4f}")
+print(f"Best F1 Score: {best_f1:.4f}")
+print(f"\nMetrics at best threshold:")
+print(f"  Precision: {precision:.4f}")
+print(f"  Recall:    {recall:.4f}")
+print(f"  Accuracy:  {accuracy:.4f}")
+print(f"\nConfusion Matrix:")
+print(f"  TP: {tp:6d}  FP: {fp:6d}")
+print(f"  FN: {fn:6d}  TN: {tn:6d}")
+print('='*60)
+
 # ---------------- PLOT ROC + PR ----------------
-fpr, tpr, _ = roc_curve(labels, scores)
-prec, rec, _ = precision_recall_curve(labels, scores)
+fpr, tpr, roc_thresholds = roc_curve(labels, scores)
+prec, rec, pr_thresholds = precision_recall_curve(labels, scores)
 
 plt.figure()
-plt.plot(fpr, tpr, label=f"ROC AUC = {auc(fpr, tpr):.4f}")
+plt.plot(fpr, tpr, label=f"AUC = {auc(fpr, tpr):.4f}")
+plt.scatter([fp/(fp+tn)], [tp/(tp+fn)], color='red', s=100, zorder=5, 
+            label=f'Best threshold = {best_threshold:.4f}')
 plt.title("ROC Curve")
 plt.xlabel("False Positive Rate")
 plt.ylabel("True Positive Rate")
@@ -212,7 +256,9 @@ plt.legend()
 plt.show()
 
 plt.figure()
-plt.plot(rec, prec, label=f"PR AUC = {auc(rec, prec):.4f}")
+plt.plot(rec, prec, label=f"AUC = {auc(rec, prec):.4f}")
+plt.scatter([recall], [precision], color='red', s=100, zorder=5,
+            label=f'Best threshold = {best_threshold:.4f}')
 plt.title("Precision-Recall Curve")
 plt.xlabel("Recall")
 plt.ylabel("Precision")
@@ -220,5 +266,11 @@ plt.grid(True)
 plt.legend()
 plt.show()
 
-print("AUC ROC:", auc(fpr, tpr))
-print("AUC PR:", auc(rec, prec))
+print(f"\n{'='*60}")
+print("SUMMARY")
+print('='*60)
+print(f"AUC ROC: {auc(fpr, tpr):.4f}")
+print(f"AUC PR:  {auc(rec, prec):.4f}")
+print(f"Best Threshold: {best_threshold:.4f}")
+print(f"Best F1 Score:  {best_f1:.4f}")
+print('='*60)
