@@ -53,32 +53,7 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def show_crop_overlay(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
-    """
-    A function only to test and visualize the cropping area used in compute_histogram.
-    """
-    img = cv2.resize(img, target_size)
-    h, w = img.shape[:2]
-
-    crop_h = max(1, int(h * height_ratio))
-    crop_w = max(1, int(w * width_ratio))
-    y_center = int(h * center_y_ratio)
-    x_center = int(w * center_x_ratio)
-
-    y_start = max(0, y_center - crop_h // 2)
-    y_end   = min(h, y_start + crop_h)
-    x_start = max(0, x_center - crop_w // 2)
-    x_end   = min(w, x_start + crop_w)
-
-    # Tegn grøn boks
-    overlay = img.copy()
-    cv2.rectangle(overlay, (x_start, y_start), (x_end, y_end), (0, 255, 0), 2)
-
-    cv2.imshow("Crop Overlay", overlay)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.3):
+def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.8):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """
@@ -95,11 +70,12 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
 
     if best_score < threshold_score:
         print(f"Best score {best_score}")
+        print(f"Classification: {best_label}")
         return best_label
     else:
         print(f"No military match found. Best score: {best_score}")
+        print(f"Classification: Civilian")
         return "Civilian"
-
 
 
 # Validation and test
@@ -187,75 +163,6 @@ def show_video_with_annotations(video_path=VIDEO_PATH, json_path=COCO_JSON, id_o
     cap.release()
     cv2.destroyAllWindows()
 
-
-def test_classification_on_video(video_path=VIDEO_PATH, json_path=COCO_JSON, id_offsets=(0, 1)):
-    """
-    Function to test and validate the classification algorithm on a video with annotations
-    in JSON COCO format.
-    """
-    # Load JSON
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    
-    # Map image_id -> annotations
-    frame_annotations = {}
-    for ann in data.get("annotations", []):
-        image_id = ann.get("image_id")
-        if image_id is None:
-            continue
-        frame_annotations.setdefault(image_id, []).append(ann)
-    
-    # Load video
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        print(f"Error: Cannot open video {video_path}")
-        return
-    y_true, y_pred = [], []
-    frame_idx = 0
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        # Find annotations for this frame
-        anns = []
-        for off in id_offsets:
-            img_id = frame_idx + off
-            if img_id in frame_annotations:
-                anns = frame_annotations[img_id]
-                break
-        
-        # Run classifier on each ROI
-        for ann in anns:
-            bbox = ann["bbox"] # COCO-format: [x, y, w, h]
-
-            x, y, w, h = [int(v) for v in bbox]
-            roi = frame[y:y+h, x:x+w]
-
-            # Ground truth label
-            attrs = ann.get("attributes", {})
-            true_label = "Unknown person"
-            for cname, active in attrs.items():
-                if active:
-                    true_label = cname
-                    break
-            
-            pred_label = classify_person(roi, reference_histograms)
-
-            y_true.append(true_label)
-            y_pred.append(pred_label)
-        
-        frame_idx += 1
-    
-    cap.release()
-
-    # Calculate and print metrics
-    print("Classification Report:")
-    print(classification_report(y_true, y_pred))
-    print("Confusion Matrix:")
-    print(confusion_matrix(y_true, y_pred))
-
 # Main
 reference_histograms = load_reference_histograms("Reference templates")
-test_classification_on_video()
+show_video_with_annotations()
