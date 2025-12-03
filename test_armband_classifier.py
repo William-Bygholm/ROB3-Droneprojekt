@@ -22,10 +22,10 @@ TEST_DATA = [
 
 # Class mapping from COCO attributes to our classification
 CLASS_MAPPING = {
-    'Military good': 'good',
-    'Military bad': 'bad',
-    'Good HVT': 'good_hvt',
-    'Bad HVT': 'bad_hvt',
+    'Good military': 'good',
+    'Bad military': 'bad',
+    'Good military (HVT)': 'good_hvt',
+    'Bad military (HVT)': 'bad_hvt',
     'Civilian': 'civilian',
     'Military': 'military',
     'Unknown person': 'unknown'
