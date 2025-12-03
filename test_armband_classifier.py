@@ -1,6 +1,6 @@
 """
 Test armband classification against ground truth annotations.
-Generates precision-recall curves and performance metrics.
+Generates confusion matrix and performance metrics.
 """
 
 import cv2
@@ -9,18 +9,14 @@ import json
 import os
 from find_armbod import blob_analysis, classify_target, crop_image
 import matplotlib.pyplot as plt
-from sklearn.metrics import precision_recall_curve, average_precision_score, confusion_matrix
+from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
 # Configuration
 TEST_DATA = [
     {
-        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
-        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
-    },
-    {
-        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned .MP4",
-        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili og 1 idiot.json"
+        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4",
+        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\2 mili med blå bond.json"
     }
 ]
 
@@ -84,7 +80,7 @@ def extract_person_roi(frame, bbox, padding=0.1):
     
     return frame[y1:y2, x1:x2]
 
-def classify_person_armband(roi):
+def classify_person_armband(roi, display_debug=False):
     """
     Classify a person ROI using armband detection.
     Returns: (predicted_class, confidence, details)
@@ -96,7 +92,7 @@ def classify_person_armband(roi):
     cropped = crop_image(roi)
     
     # Apply blob analysis
-    _, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
+    annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
         cropped,
         morph_kernel=(3, 3),
         morph_iters=1,
@@ -127,6 +123,36 @@ def classify_person_armband(roi):
     else:
         confidence = 0.4  # Mixed signals - low confidence
     
+    # Display blob analysis if requested
+    if display_debug:
+        # Create visualization
+        debug_img = annotated.copy()
+        
+        # Add text overlay
+        cv2.putText(debug_img, f"Pred: {pred_class}", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(debug_img, f"Conf: {confidence:.2f}", (10, 60), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(debug_img, f"R:{len(red_boxes)} B:{len(blue_boxes)}", (10, 90), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        # Show masks side by side
+        mask_red_colored = cv2.cvtColor(mask_red, cv2.COLOR_GRAY2BGR)
+        mask_blue_colored = cv2.cvtColor(mask_blue, cv2.COLOR_GRAY2BGR)
+        
+        # Resize for display
+        display_h = 300
+        scale = display_h / debug_img.shape[0] if debug_img.shape[0] > 0 else 1
+        debug_resized = cv2.resize(debug_img, None, fx=scale, fy=scale)
+        mask_red_resized = cv2.resize(mask_red_colored, None, fx=scale, fy=scale)
+        mask_blue_resized = cv2.resize(mask_blue_colored, None, fx=scale, fy=scale)
+        
+        # Combine horizontally
+        combined = np.hstack([debug_resized, mask_red_resized, mask_blue_resized])
+        
+        cv2.imshow("Blob Analysis: Image | Red Mask | Blue Mask", combined)
+        cv2.waitKey(1)
+    
     details = {
         'classification': classification,
         'red_boxes': len(red_boxes),
@@ -136,7 +162,7 @@ def classify_person_armband(roi):
     
     return pred_class, confidence, details
 
-def test_video(video_path, ground_truth, sample_every_n=1):
+def test_video(video_path, ground_truth, sample_every_n=1, display_debug=False):
     """
     Test armband classifier on video with ground truth.
     Returns predictions and ground truth for evaluation.
@@ -184,7 +210,7 @@ def test_video(video_path, ground_truth, sample_every_n=1):
                 roi = extract_person_roi(frame, ann['bbox'], padding=0.1)
                 
                 # Run classification
-                pred_class, confidence, details = classify_person_armband(roi)
+                pred_class, confidence, details = classify_person_armband(roi, display_debug=display_debug)
                 
                 # Store result
                 gt_class = ann['class']
@@ -293,72 +319,25 @@ def evaluate_predictions(predictions, output_dir="Output"):
     y_pred_binary = ['good' if 'good' in pred else 'bad' if 'bad' in pred else 'other' for pred in y_pred]
     
     # Filter out 'other'
-    binary_pairs = [(gt, pred, conf) for gt, pred, conf in zip(y_true_binary, y_pred_binary, confidences) 
+    binary_pairs = [(gt, pred) for gt, pred in zip(y_true_binary, y_pred_binary) 
                     if gt != 'other' and pred != 'other']
     
     if len(binary_pairs) > 0:
         y_true_bin = [p[0] for p in binary_pairs]
         y_pred_bin = [p[1] for p in binary_pairs]
-        conf_bin = [p[2] for p in binary_pairs]
         
         correct_bin = sum(1 for gt, pred in zip(y_true_bin, y_pred_bin) if gt == pred)
         accuracy_bin = correct_bin / len(y_true_bin)
         print(f"Binary Accuracy: {accuracy_bin:.2%} ({correct_bin}/{len(y_true_bin)})")
-        
-        # Precision-Recall curve for "good" class
-        y_true_numeric = [1 if gt == 'good' else 0 for gt in y_true_bin]
-        y_score = [conf if pred == 'good' else (1 - conf) for pred, conf in zip(y_pred_bin, conf_bin)]
-        
-        precision_curve, recall_curve, thresholds = precision_recall_curve(y_true_numeric, y_score)
-        avg_precision = average_precision_score(y_true_numeric, y_score)
-        
-        # Print unique confidence values to show discrete nature
-        unique_confs = sorted(set(y_score))
-        print(f"Unique confidence values: {unique_confs}")
-        print(f"Number of unique thresholds: {len(unique_confs)}")
-        
-        plt.figure(figsize=(10, 6))
-        # Plot line with markers to show discrete points
-        plt.plot(recall_curve, precision_curve, linewidth=2, label=f'AP = {avg_precision:.3f}', marker='o', markersize=6, markevery=max(1, len(recall_curve)//20))
-        plt.xlabel('Recall', fontsize=12)
-        plt.ylabel('Precision', fontsize=12)
-        plt.title('Precision-Recall Curve (Good Soldier Detection)', fontsize=14)
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xticks(np.arange(0, 1.1, 0.1))  # 10 steps on x-axis
-        plt.yticks(np.arange(0, 1.1, 0.1))  # 10 steps on y-axis
-        plt.grid(True, alpha=0.3)
-        plt.legend(fontsize=11)
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, 'precision_recall_curve.png'), dpi=150)
-        print(f"\nAverage Precision (Good): {avg_precision:.3f}")
-        print(f"Saved: {output_dir}/precision_recall_curve.png")
-        plt.close()
-    
-    # Save detailed results to CSV
-    import csv
-    csv_path = os.path.join(output_dir, 'test_results.csv')
-    with open(csv_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=['frame', 'track_id', 'ground_truth', 'predicted', 
-                                                'confidence', 'correct', 'red_boxes', 'blue_boxes'])
-        writer.writeheader()
-        for p in valid_predictions:
-            writer.writerow({
-                'frame': p['frame'],
-                'track_id': p['track_id'],
-                'ground_truth': p['ground_truth'],
-                'predicted': p['predicted'],
-                'confidence': p['confidence'],
-                'correct': p['ground_truth'] == p['predicted'],
-                'red_boxes': p['details']['red_boxes'],
-                'blue_boxes': p['details']['blue_boxes']
-            })
-    print(f"Saved: {csv_path}")
 
 def main():
     print("="*60)
     print("ARMBAND CLASSIFIER EVALUATION")
     print("="*60)
+    
+    # Ask user if they want to display debug visualization
+    print("\nDisplay blob analysis visualization? (y/n): ", end='')
+    display_debug = input().strip().lower() == 'y'
     
     # Collect predictions from all videos
     all_predictions = []
@@ -388,10 +367,13 @@ def main():
         
         # Test on video
         print(f"\nTesting video: {video_path}")
-        predictions = test_video(video_path, ground_truth, sample_every_n=1)
+        predictions = test_video(video_path, ground_truth, sample_every_n=1, display_debug=display_debug)
         
         all_predictions.extend(predictions)
         print(f"Collected {len(predictions)} predictions from this video")
+    
+    # Close any visualization windows
+    cv2.destroyAllWindows()
     
     # Evaluate combined results
     print(f"\n{'='*60}")
