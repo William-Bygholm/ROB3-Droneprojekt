@@ -7,9 +7,9 @@ from sklearn.metrics import roc_curve, precision_recall_curve, auc
 import matplotlib.pyplot as plt
 
 # ---------------- USER INPUT ----------------
-VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\Civil person.MP4"
+VIDEO_IN = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\Civil person.MP4"
 MODEL_FILE = "svm_hog_model.pkl_v3"
-JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Træning\Civil person.json"
+JSON_COCO = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Træning\Civil person.json"
 
 WINDOW_SIZE = (128, 256)
 SCALES = [1.0, 0.8]
