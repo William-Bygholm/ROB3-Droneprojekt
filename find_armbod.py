@@ -93,7 +93,7 @@ def classify_target(red_boxes, blue_boxes):
     
     # No boxes found
     if num_red == 0 and num_blue == 0:
-        return "No target", None, False
+        return "Soldier", None, False
     
     # Normal cases - single color only
     if num_blue > 0 and num_red == 0:
@@ -128,6 +128,16 @@ def classify_target(red_boxes, blue_boxes):
         else:
             return "Bad soldier (area-based)", "bad", False
     
+    if num_red == 2 and num_blue == 2:
+        # Compare largest areas
+        red_area = max(box[4] for box in red_boxes)
+        blue_area = max(box[4] for box in blue_boxes)
+        
+        if blue_area > red_area:
+            return "Good soldier (HVT area-based)", "good", True
+        else:
+            return "Bad soldier (HVT area-based)", "bad", True
+    
     # Fallback for any other combinations
     return "Uncertain classification", None, False
 
@@ -144,12 +154,12 @@ def crop_image(img):
         img = img[start_row:end_row, :]
 
     # --- horizontal crop: remove 5% from each side (margin) ---
-    #WIDTH_REMOVE_RATIO = 0.05  # remove 5% from left and 5% from right
-    #w = img.shape[1]
-    #left = int(w * WIDTH_REMOVE_RATIO)
-    #right = int(w * (1.0 - WIDTH_REMOVE_RATIO))
-    #if left < right:
-    #    img = img[:, left:right]
+    WIDTH_REMOVE_RATIO = 0.1  # remove 10% from left and 10% from right
+    w = img.shape[1]
+    left = int(w * WIDTH_REMOVE_RATIO)
+    right = int(w * (1.0 - WIDTH_REMOVE_RATIO))
+    if left < right:
+        img = img[:, left:right]
     return img
 
 def process_image(image_path):
