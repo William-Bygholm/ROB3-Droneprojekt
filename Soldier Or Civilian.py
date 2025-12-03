@@ -47,11 +47,10 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def show_crop_overlay(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
+def show_crop_overlay(img, center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
     """
     A function only to test and visualize the cropping area used in compute_histogram.
     """
-    img = cv2.resize(img, target_size)
     h, w = img.shape[:2]
 
     crop_h = max(1, int(h * height_ratio))
