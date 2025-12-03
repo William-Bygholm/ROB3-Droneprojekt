@@ -80,7 +80,7 @@ def extract_person_roi(frame, bbox, padding=0.1):
     
     return frame[y1:y2, x1:x2]
 
-def classify_person_armband(roi, display_debug=False):
+def classify_person_armband(roi, display_debug=False, display_height=300, step_mode=False):
     """
     Classify a person ROI using armband detection.
     Returns: (predicted_class, confidence, details)
@@ -140,9 +140,8 @@ def classify_person_armband(roi, display_debug=False):
         mask_red_colored = cv2.cvtColor(mask_red, cv2.COLOR_GRAY2BGR)
         mask_blue_colored = cv2.cvtColor(mask_blue, cv2.COLOR_GRAY2BGR)
         
-        # Resize for display
-        display_h = 300
-        scale = display_h / debug_img.shape[0] if debug_img.shape[0] > 0 else 1
+        # Resize for display (configurable height)
+        scale = display_height / debug_img.shape[0] if debug_img.shape[0] > 0 else 1
         debug_resized = cv2.resize(debug_img, None, fx=scale, fy=scale)
         mask_red_resized = cv2.resize(mask_red_colored, None, fx=scale, fy=scale)
         mask_blue_resized = cv2.resize(mask_blue_colored, None, fx=scale, fy=scale)
@@ -150,8 +149,23 @@ def classify_person_armband(roi, display_debug=False):
         # Combine horizontally
         combined = np.hstack([debug_resized, mask_red_resized, mask_blue_resized])
         
-        cv2.imshow("Blob Analysis: Image | Red Mask | Blue Mask", combined)
-        cv2.waitKey(1)
+        # Create resizable window and apply size
+        win_name = "Blob Analysis: Image | Red Mask | Blue Mask"
+        cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+        # Try to set window size proportional to combined image
+        desired_width = int(combined.shape[1])
+        desired_height = int(combined.shape[0])
+        cv2.resizeWindow(win_name, desired_width, desired_height)
+        cv2.imshow(win_name, combined)
+        # Step-through mode waits for keypress
+        if step_mode:
+            key = cv2.waitKey(0)
+            # Allow quit
+            if key in (ord('q'), 27):  # 'q' or ESC
+                # Signal quit by raising KeyboardInterrupt; caller handles
+                raise KeyboardInterrupt("User aborted visualization")
+        else:
+            cv2.waitKey(1)
     
     details = {
         'classification': classification,
@@ -162,7 +176,7 @@ def classify_person_armband(roi, display_debug=False):
     
     return pred_class, confidence, details
 
-def test_video(video_path, ground_truth, sample_every_n=1, display_debug=False):
+def test_video(video_path, ground_truth, sample_every_n=1, display_debug=False, display_height=300, step_mode=False):
     """
     Test armband classifier on video with ground truth.
     Returns predictions and ground truth for evaluation.
@@ -210,7 +224,17 @@ def test_video(video_path, ground_truth, sample_every_n=1, display_debug=False):
                 roi = extract_person_roi(frame, ann['bbox'], padding=0.1)
                 
                 # Run classification
-                pred_class, confidence, details = classify_person_armband(roi, display_debug=display_debug)
+                try:
+                    pred_class, confidence, details = classify_person_armband(
+                        roi,
+                        display_debug=display_debug,
+                        display_height=display_height,
+                        step_mode=step_mode,
+                    )
+                except KeyboardInterrupt:
+                    # User chose to abort visualization; break out cleanly
+                    cap.release()
+                    return predictions
                 
                 # Store result
                 gt_class = ann['class']
@@ -354,7 +378,19 @@ def main():
         
         # Check files exist
         if not os.path.exists(video_path):
-            print(f"WARNING: Video not found, skipping: {video_path}")
+            print("\nDisplay blob analysis visualization? (y/N): ", end='') 
+            display_debug = input().strip().lower() == 'y'
+            step_mode = False
+            display_height = 750
+            if display_debug:
+                try:
+                    step_choice = input("Enable step-through mode? Wait for key per person (y/N): ").strip().lower()
+                    step_mode = step_choice == 'y'
+                    h_input = input("Desired display height in pixels (default 300): ").strip()
+                    if h_input:
+                        display_height = max(100, int(h_input))
+                except Exception:
+                    print("Using default display settings (height=300, step_mode=False)")
             continue
         if not os.path.exists(json_path):
             print(f"WARNING: JSON not found, skipping: {json_path}")
@@ -383,8 +419,15 @@ def main():
     
     evaluate_predictions(all_predictions)
     
-    print("\n" + "="*60)
-    print("EVALUATION COMPLETE!")
+    print(f"\nTesting video: {video_path}")
+    predictions = test_video(
+    video_path,
+    ground_truth,
+    sample_every_n=1,
+    display_debug=display_debug,
+    display_height=display_height,
+    step_mode=step_mode,
+    )
     print("="*60)
 
 if __name__ == "__main__":
