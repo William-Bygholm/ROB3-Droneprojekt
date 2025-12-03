@@ -2,12 +2,11 @@ import cv2
 import numpy as np
 import os
 
-def compute_histogram(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
+def compute_histogram(img, center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
     """
     Help-function to compute a normalized HSV histogram for the upper part (breast region) of an image.
     This is used both for reference histograms creation and for classification.
     """
-    img = cv2.resize(img, target_size)
     h, w = img.shape[:2]
 
     new_h = max(1, int(h*height_ratio))
@@ -48,11 +47,10 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def show_crop_overlay(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
+def show_crop_overlay(img, center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
     """
     A function only to test and visualize the cropping area used in compute_histogram.
     """
-    img = cv2.resize(img, target_size)
     h, w = img.shape[:2]
 
     crop_h = max(1, int(h * height_ratio))
@@ -90,13 +88,14 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
 
     if best_score < threshold_score:
         print(f"Best score {best_score}")
+        print(f"Classification: {best_label}")
         return best_label
     else:
         print(f"No military match found. Best score: {best_score}")
+        print(f"Classification: Civilian")
         return "Civilian"
 
 roi = cv2.imread('Billeder/Military close range.png')
 reference_histograms = load_reference_histograms("Reference templates")
 classification = classify_person(roi, reference_histograms, threshold_score=0.8)
-print(f"Classification: {classification}")
 show_crop_overlay(roi)
