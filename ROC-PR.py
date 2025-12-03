@@ -7,21 +7,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, precision_recall_curve, auc, f1_score
 
-# ---------------- USER INPUT ----------------
-# Multiple video/JSON pairs for testing
-TEST_DATASETS = [
-    {
-        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4",
-        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
-    }
-]
+# ---------------- CONFIG: SINGLE VIDEO + JSON ----------------
+VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
+JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
+MODEL_FILE = "Person_Detector_Json.pkl"
 
 # HOG window and scanning parameters
 WINDOW_SIZE = (128, 256)  # (width, height)
 SCALES = [1.0, 0.8]       # pyramid scales
 STEP_SIZES = {1.0: 64, 0.8: 56}
-FRAME_SKIP = 1
-IOU_POSITIVE = 0.5
+FRAME_SKIP = 1            # process every FRAME_SKIP-th frame
+IOU_POSITIVE = 0.5        # IoU threshold for positive label
+
+# Memory-friendly options
+DOWNSCALE_MAX_W = None    # e.g., 1280 to limit width (None to disable)
+DOWNSCALE_MAX_H = None    # e.g., 720 to limit height (None to disable)
+MAX_FRAMES = None         # e.g., 150 to limit frames processed (None to disable)
 
 # ---------------- HELPERS ----------------
 def sliding_windows(img, step, win_size):
