@@ -375,26 +375,7 @@ def main():
         print(f"Video: {video_path}")
         print(f"JSON: {json_path}")
         print('='*60)
-        
-        # Check files exist
-        if not os.path.exists(video_path):
-            print("\nDisplay blob analysis visualization? (y/N): ", end='') 
-            display_debug = input().strip().lower() == 'y'
-            step_mode = False
-            display_height = 750
-            if display_debug:
-                try:
-                    step_choice = input("Enable step-through mode? Wait for key per person (y/N): ").strip().lower()
-                    step_mode = step_choice == 'y'
-                    h_input = input("Desired display height in pixels (default 300): ").strip()
-                    if h_input:
-                        display_height = max(100, int(h_input))
-                except Exception:
-                    print("Using default display settings (height=300, step_mode=False)")
-            continue
-        if not os.path.exists(json_path):
-            print(f"WARNING: JSON not found, skipping: {json_path}")
-            continue
+    
         
         # Load ground truth
         print(f"\nLoading ground truth from: {json_path}")
@@ -418,17 +399,6 @@ def main():
     print('='*60)
     
     evaluate_predictions(all_predictions)
-    
-    print(f"\nTesting video: {video_path}")
-    predictions = test_video(
-    video_path,
-    ground_truth,
-    sample_every_n=1,
-    display_debug=display_debug,
-    display_height=display_height,
-    step_mode=step_mode,
-    )
-    print("="*60)
 
 if __name__ == "__main__":
     main()
