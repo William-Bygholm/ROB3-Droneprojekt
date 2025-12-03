@@ -25,7 +25,7 @@ MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 WINDOW_SIZE = (128, 256)
 SCALES = [1.0, 0.8]
 STEP_SIZES = {1.0: 64, 0.8: 56}
-FRAME_SKIP = 4
+FRAME_SKIP = 1
 IOU_POSITIVE = 0.5
 
 # ---------------- HELPERS ----------------
