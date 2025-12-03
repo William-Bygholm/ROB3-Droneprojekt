@@ -1,10 +1,9 @@
-# validator.py
+# validator_optimized.py
 import cv2
 import joblib
 import numpy as np
 import json
 import time
-import os
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, precision_recall_curve, auc, f1_score
 
@@ -13,10 +12,10 @@ VIDEO_IN = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Dronepro
 JSON_COCO = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
 MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
-SCALES = [1.0, 0.8, 0.64]
-STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
+SCALES = [1.0, 0.8]  # drop small scale for speed
+STEP_SIZES = {1.0: 48, 0.8: 36}
 NMS_THRESHOLD = 0.05
-FRAME_SKIP = 10
+FRAME_SKIP = 2  # skip frames
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
 
@@ -51,48 +50,45 @@ def sliding_windows(img, step, win_size):
 def nms_opencv(detections, scores, score_threshold, nms_threshold):
     if len(detections) == 0:
         return [], []
-    boxes_xywh = [[x1, y1, x2 - x1, y2 - y1] for (x1, y1, x2, y2) in detections]
-    scores = [float(s) for s in scores]
-    indices = cv2.dnn.NMSBoxes(boxes_xywh, scores, score_threshold, nms_threshold)
+    boxes_xywh = np.array([[x1, y1, x2 - x1, y2 - y1] for (x1, y1, x2, y2) in detections], dtype=np.float32)
+    scores = np.array(scores, dtype=np.float32)
+    indices = cv2.dnn.NMSBoxes(boxes_xywh.tolist(), scores.tolist(), score_threshold, nms_threshold)
     if len(indices) == 0:
         return [], []
     indices = indices.flatten()
     return [detections[i] for i in indices], [scores[i] for i in indices]
 
 def merge_close_boxes(boxes, scores, iou_threshold=0.2):
-    merged = []
-    merged_scores = []
-    used = [False] * len(boxes)
-    for i in range(len(boxes)):
-        if used[i]:
-            continue
-        x1, y1, x2, y2 = boxes[i]
-        group = [boxes[i]]
-        group_scores = [scores[i]]
-        used[i] = True
-        for j in range(i+1, len(boxes)):
-            if used[j]:
-                continue
-            xx1, yy1, xx2, yy2 = boxes[j]
-            inter_x1 = max(x1, xx1)
-            inter_y1 = max(y1, yy1)
-            inter_x2 = min(x2, xx2)
-            inter_y2 = min(y2, yy2)
-            inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
-            area1 = (x2 - x1) * (y2 - y1)
-            area2 = (xx2 - xx1) * (yy2 - yy1)
-            iou = inter_area / float(area1 + area2 - inter_area + 1e-9)
-            if iou > iou_threshold:
-                group.append(boxes[j])
-                group_scores.append(scores[j])
-                used[j] = True
-        gx1 = min(b[0] for b in group)
-        gy1 = min(b[1] for b in group)
-        gx2 = max(b[2] for b in group)
-        gy2 = max(b[3] for b in group)
-        merged.append([gx1, gy1, gx2, gy2])
-        merged_scores.append(max(group_scores))
-    return merged, merged_scores
+    if len(boxes) == 0:
+        return [], []
+    boxes = np.array(boxes)
+    scores = np.array(scores)
+    order = scores.argsort()[::-1]
+    boxes = boxes[order]
+    scores = scores[order]
+    keep = []
+    while len(boxes) > 0:
+        box = boxes[0]
+        score = scores[0]
+        keep.append((box.tolist(), score))
+        boxes = boxes[1:]
+        scores = scores[1:]
+        if len(boxes) == 0:
+            break
+        # Compute IoU
+        xx1 = np.maximum(box[0], boxes[:,0])
+        yy1 = np.maximum(box[1], boxes[:,1])
+        xx2 = np.minimum(box[2], boxes[:,2])
+        yy2 = np.minimum(box[3], boxes[:,3])
+        inter = np.maximum(0, xx2-xx1) * np.maximum(0, yy2-yy1)
+        area1 = (box[2]-box[0])*(box[3]-box[1])
+        area2 = (boxes[:,2]-boxes[:,0])*(boxes[:,3]-boxes[:,1])
+        iou_vals = inter / (area1 + area2 - inter + 1e-9)
+        mask = iou_vals <= iou_threshold
+        boxes = boxes[mask]
+        scores = scores[mask]
+    final_boxes, final_scores = zip(*keep) if keep else ([], [])
+    return list(final_boxes), list(final_scores)
 
 def iou(a, b):
     x1 = max(a[0], b[0])
@@ -116,12 +112,10 @@ for ann in coco["annotations"]:
         continue
     x, y, w, h = ann["bbox"]
     frame_to_boxes.setdefault(frame_id, []).append([int(x), int(y), int(x+w), int(y+h)])
-
 coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
 
 # ---------------- VALIDATION LOOP ----------------
-scores_all = []
-labels_all = []
+scores_all, labels_all = [], []
 
 cap = cv2.VideoCapture(VIDEO_IN)
 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -144,22 +138,23 @@ while True:
     gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)] for x1,y1,x2,y2 in gt_boxes]
 
     detections, scores = [], []
+    # --- BATCH HOG ---
     for scale in SCALES:
         resized = cv2.resize(gray, None, fx=scale, fy=scale)
         step = STEP_SIZES[scale]
         scale_x_win = w0 / resized.shape[1]
         scale_y_win = h0 / resized.shape[0]
-        for x, y, win in sliding_windows(resized, step, WINDOW_SIZE):
-            if win.shape != (WINDOW_SIZE[1], WINDOW_SIZE[0]):
-                continue
-            feat = hog.compute(win).ravel()
-            score = clf.decision_function([feat])[0]
-            x1 = int(x * scale_x_win)
-            y1 = int(y * scale_y_win)
-            x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
-            y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
-            detections.append([x1, y1, x2, y2])
-            scores.append(score)
+        windows = list(sliding_windows(resized, step, WINDOW_SIZE))
+        feats = [hog.compute(win).ravel() for _,_,win in windows]
+        if feats:
+            scores_batch = clf.decision_function(feats)
+            for (x, y, _), score in zip(windows, scores_batch):
+                x1 = int(x * scale_x_win)
+                y1 = int(y * scale_y_win)
+                x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
+                y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
+                detections.append([x1, y1, x2, y2])
+                scores.append(score)
 
     # NMS + merge
     nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
@@ -188,55 +183,34 @@ while True:
 cap.release()
 print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections.")
 
-# ---------------- METRICS & THRESHOLD ----------------
+# ---------------- METRICS ----------------
 scores = np.array(scores_all, dtype=np.float32)
 labels = np.array(labels_all, dtype=np.int32)
 
-print(f"[INFO] Positives: {labels.sum()}, Negatives: {len(labels) - labels.sum()}")
-
-# Find best threshold by F1
 thresholds = np.linspace(scores.min(), scores.max(), 100)
-f1_scores = []
-for thr in thresholds:
-    preds = (scores >= thr).astype(int)
-    f1_scores.append(f1_score(labels, preds))
-
+f1_scores = [f1_score(labels, (scores >= thr).astype(int)) for thr in thresholds]
 best_idx = int(np.argmax(f1_scores))
 best_threshold = float(thresholds[best_idx])
 best_f1 = float(f1_scores[best_idx])
-
-# Metrics at best threshold
 best_predictions = (scores >= best_threshold).astype(int)
+
 tp = int(np.sum((labels == 1) & (best_predictions == 1)))
 fp = int(np.sum((labels == 0) & (best_predictions == 1)))
 fn = int(np.sum((labels == 1) & (best_predictions == 0)))
 tn = int(np.sum((labels == 0) & (best_predictions == 0)))
+precision = tp / (tp+fp) if (tp+fp) > 0 else 0
+recall = tp / (tp+fn) if (tp+fn) > 0 else 0
+accuracy = (tp+tn)/len(labels)
 
-precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-accuracy = (tp + tn) / float(len(labels))
+print(f"\nBest Threshold: {best_threshold:.4f} | F1: {best_f1:.4f} | Precision: {precision:.4f} | Recall: {recall:.4f} | Accuracy: {accuracy:.4f}")
 
-print("\n" + "="*60)
-print("OPTIMAL THRESHOLD ANALYSIS")
-print("="*60)
-print(f"Best Threshold: {best_threshold:.4f}")
-print(f"Best F1 Score: {best_f1:.4f}")
-print("\nMetrics at best threshold:")
-print(f"  Precision: {precision:.4f}")
-print(f"  Recall:    {recall:.4f}")
-print(f"  Accuracy:  {accuracy:.4f}")
-print("\nConfusion Matrix:")
-print(f"  TP: {tp:6d}  FP: {fp:6d}")
-print(f"  FN: {fn:6d}  TN: {tn:6d}")
-print("="*60)
-
-# ---------------- PLOT ROC + PR ----------------
+# ---------------- PLOT ----------------
 fpr, tpr, _ = roc_curve(labels, scores)
 prec, rec, _ = precision_recall_curve(labels, scores)
 
 plt.figure()
 plt.plot(fpr, tpr, label=f"AUC = {auc(fpr, tpr):.4f}")
-plt.scatter([fp/(fp+tn+1e-9)], [tp/(tp+fn+1e-9)], color='red', s=100, zorder=5,
+plt.scatter([fp/(fp+tn+1e-9)], [tp/(tp+fn+1e-9)], color='red', s=100,
             label=f'Best thr = {best_threshold:.4f}')
 plt.title("ROC Curve")
 plt.xlabel("False Positive Rate")
@@ -247,7 +221,7 @@ plt.show()
 
 plt.figure()
 plt.plot(rec, prec, label=f"AUC = {auc(rec, prec):.4f}")
-plt.scatter([recall], [precision], color='red', s=100, zorder=5,
+plt.scatter([recall], [precision], color='red', s=100,
             label=f'Best thr = {best_threshold:.4f}')
 plt.title("Precision-Recall Curve")
 plt.xlabel("Recall")
@@ -255,12 +229,3 @@ plt.ylabel("Precision")
 plt.grid(True)
 plt.legend()
 plt.show()
-
-print("\n" + "="*60)
-print("SUMMARY")
-print("="*60)
-print(f"AUC ROC: {auc(fpr, tpr):.4f}")
-print(f"AUC PR:  {auc(rec, prec):.4f}")
-print(f"Best Threshold: {best_threshold:.4f}")
-print(f"Best F1 Score:  {best_f1:.4f}")
-print("="*60)

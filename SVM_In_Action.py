@@ -6,8 +6,8 @@ import numpy as np
 VIDEO_IN = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
 MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
-SCALES = [1.0, 0.8, 0.64]
-STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
+SCALES = [1.0, 0.8]
+STEP_SIZES = {1.0: 32, 0.8: 28}
 
 NMS_THRESHOLD = 0.05
 DISPLAY_SCALE = 0.3
