@@ -2,12 +2,11 @@ import cv2
 import numpy as np
 import os
 
-def compute_histogram(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
+def compute_histogram(img, center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
     """
     Help-function to compute a normalized HSV histogram for the upper part (breast region) of an image.
     This is used both for reference histograms creation and for classification.
     """
-    img = cv2.resize(img, target_size)
     h, w = img.shape[:2]
 
     new_h = max(1, int(h*height_ratio))
