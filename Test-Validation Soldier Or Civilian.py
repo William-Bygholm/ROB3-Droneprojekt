@@ -236,10 +236,11 @@ def collect_scores(video_path, frame_annotations, reference_histograms, threshol
             y_true.append(gt_label)
 
             # Classification with classify_person()
-            pred_label, score = classify_person(roi, reference_histograms, threshold_score)
+            pred_label, score = classify_person(roi, reference_histograms, threshold_score=threshold_score)
 
             # Score for ROC (inverted so higher score = more Military)
-            y_score.append(1.0 - score)
+            match_score = max(0.0, min(1.0, 1.0 - score))
+            y_score.append(match_score)
 
             # Predicted label for confusion matrix
             if "Military" in pred_label or "HVT" in pred_label:
