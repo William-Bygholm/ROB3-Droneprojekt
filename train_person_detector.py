@@ -19,8 +19,8 @@ TRAINING_DATA = [
     }
 ]
 
-ADDITIONAL_POSITIVES_DIR = r"C:\Users\alexa\Desktop\Pos"
-ADDITIONAL_NEGATIVES_DIR = r"C:\Users\alexa\Desktop\Neg"
+ADDITIONAL_POSITIVES_DIR = 0
+ADDITIONAL_NEGATIVES_DIR = 0
 
 OUTPUT_MODEL = "Person_Detector_Json+YOLO.pkl"
 WINDOW_SIZE = (128, 256)
