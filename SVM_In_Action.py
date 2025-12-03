@@ -1,42 +1,38 @@
 # detector.py
 import cv2
 import joblib
-import numpy as np 
- 
-VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
-MODEL_FILE = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\person_detector_trained.pkl"
+import numpy as np
+
+VIDEO_IN = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
+MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
+
+WINDOW_SIZE = (128, 256)
+SCALES = [1.0, 0.8, 0.64]
+STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
+
+NMS_THRESHOLD = 0.05
+DISPLAY_SCALE = 0.3
+FRAME_SKIP = 20
+SVM_THRESHOLD = 0.8
+
 
 # ---------------- LOAD MODEL ----------------
 print("Loading model...")
 model_data = joblib.load(MODEL_FILE)
 
-# Extract classifier and HOG parameters from saved model
-if isinstance(model_data, dict):
-    clf = model_data['classifier']
-    hog_params = model_data['hog_params']
-    WINDOW_SIZE = hog_params['winSize']
-    print(f"Loaded trained model with window size: {WINDOW_SIZE}")
-else:
-    # Old format compatibility
-    clf = model_data
-    WINDOW_SIZE = (128, 256)
-    print("Loaded old format model")
+clf = model_data["classifier"]
+hog_params = model_data["hog_params"]
 
-# Set parameters based on window size
-SCALES = [1.0, 0.8, 0.64]
-STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
-NMS_THRESHOLD = 0.05
-DISPLAY_SCALE = 0.3
-FRAME_SKIP = 20
-SVM_THRESHOLD = 0.8  # Start with 0 for newly trained model
+WINDOW_SIZE = hog_params["winSize"]
 
 hog = cv2.HOGDescriptor(
-    _winSize=WINDOW_SIZE,
-    _blockSize=(32, 32),
-    _blockStride=(16, 16),
-    _cellSize=(8, 8),
-    _nbins=9
+    _winSize=hog_params["winSize"],
+    _blockSize=hog_params["blockSize"],
+    _blockStride=hog_params["blockStride"],
+    _cellSize=hog_params["cellSize"],
+    _nbins=hog_params["nbins"]
 )
+
 
 # ---------------- HELPERS ----------------
 def sliding_windows(img, step, win_size):
@@ -45,22 +41,21 @@ def sliding_windows(img, step, win_size):
         for x in range(0, img.shape[1] - w + 1, step):
             yield x, y, img[y:y+h, x:x+w]
 
+
 def nms_opencv(detections, scores, score_threshold, nms_threshold):
     if len(detections) == 0:
         return []
 
-    # Convert [x1, y1, x2, y2] → [x, y, w, h]
     boxes_xywh = [[x1, y1, x2 - x1, y2 - y1] for (x1, y1, x2, y2) in detections]
     scores = [float(s) for s in scores]
 
-    # Apply NMS
     indices = cv2.dnn.NMSBoxes(boxes_xywh, scores, score_threshold, nms_threshold)
     if len(indices) == 0:
         return []
 
-    # Flatten and return only the selected boxes
     indices = indices.flatten()
     return [detections[i] for i in indices]
+
 
 def merge_close_boxes(boxes, iou_threshold=0.2):
     merged = []
@@ -69,16 +64,16 @@ def merge_close_boxes(boxes, iou_threshold=0.2):
     for i in range(len(boxes)):
         if used[i]:
             continue
+
         x1, y1, x2, y2 = boxes[i]
         group = [boxes[i]]
         used[i] = True
 
-        for j in range(i + 1, len(boxes)):
+        for j in range(i+1, len(boxes)):
             if used[j]:
                 continue
-            xx1, yy1, xx2, yy2 = boxes[j]
 
-            # Compute IoU
+            xx1, yy1, xx2, yy2 = boxes[j]
             inter_x1 = max(x1, xx1)
             inter_y1 = max(y1, yy1)
             inter_x2 = min(x2, xx2)
@@ -87,13 +82,12 @@ def merge_close_boxes(boxes, iou_threshold=0.2):
             inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
             area1 = (x2 - x1) * (y2 - y1)
             area2 = (xx2 - xx1) * (yy2 - yy1)
-            iou = inter_area / float(area1 + area2 - inter_area)
+            iou = inter_area / float(area1 + area2 - inter_area + 1e-9)
 
             if iou > iou_threshold:
                 group.append(boxes[j])
                 used[j] = True
 
-        # Merge group into one box
         gx1 = min(b[0] for b in group)
         gy1 = min(b[1] for b in group)
         gx2 = max(b[2] for b in group)
@@ -103,21 +97,9 @@ def merge_close_boxes(boxes, iou_threshold=0.2):
     return merged
 
 
-# ---------------- VIDEO PROCESSING ----------------
-cap = cv2.VideoCapture(VIDEO_IN)
-frame_id = 0
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-
-    frame_id += 1
-    if frame_id % FRAME_SKIP != 0:
-        continue
-
+# ---------------- DETECTION FUNCTION ----------------
+def detect_people(frame, clf, hog):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    orig_frame = frame.copy()
     h0, w0 = gray.shape[:2]
 
     detections = []
@@ -133,6 +115,7 @@ while True:
         for x, y, win in sliding_windows(resized, step, WINDOW_SIZE):
             if win.shape != (WINDOW_SIZE[1], WINDOW_SIZE[0]):
                 continue
+
             feat = hog.compute(win).ravel()
             score = clf.decision_function([feat])[0]
 
@@ -144,13 +127,14 @@ while True:
                 detections.append([x1, y1, x2, y2])
                 scores.append(score)
 
-    
-
+    # NMS + merge
     nms_boxes = nms_opencv(detections, scores, SVM_THRESHOLD, NMS_THRESHOLD)
-    final_boxes = merge_close_boxes(nms_boxes, iou_threshold=0.2)
+    final_boxes = merge_close_boxes(nms_boxes)
+
+    return final_boxes
 
 
-# ---------------- VIDEO PROCESSING ----------------
+# ---------------- MAIN LOOP ----------------
 if __name__ == "__main__":
     cap = cv2.VideoCapture(VIDEO_IN)
     frame_id = 0
@@ -164,22 +148,18 @@ if __name__ == "__main__":
         if frame_id % FRAME_SKIP != 0:
             continue
 
-        # Detect people and get bounding boxes
-        final_boxes = detect_people(frame, clf, hog)
+        boxes = detect_people(frame, clf, hog)
 
-        # Draw boxes on frame
-        orig_frame = frame.copy()
-        for (x1, y1, x2, y2) in final_boxes:
-            cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        # Draw boxes
+        out = frame.copy()
+        for (x1, y1, x2, y2) in boxes:
+            cv2.rectangle(out, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
-        # TODO: You can now pass final_boxes to other functions for further analysis
-        # Example: analyze_armbands(frame, final_boxes)
+        disp = cv2.resize(out, None, fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
+        cv2.imshow("HOG+SVM Detector", disp)
 
-        display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
-    #   cv2.imshow("HOG+SVM Detector", display_frame)
-
-    #    if cv2.waitKey(1) & 0xFF == ord('q'):
-    #        break
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
     cap.release()
     cv2.destroyAllWindows()
