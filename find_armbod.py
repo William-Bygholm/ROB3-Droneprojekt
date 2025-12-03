@@ -93,7 +93,7 @@ def classify_target(red_boxes, blue_boxes):
     
     # No boxes found
     if num_red == 0 and num_blue == 0:
-        return "Military", None, False
+        return "Soldier", None, False
     
     # Normal cases - single color only
     if num_blue > 0 and num_red == 0:
