@@ -13,10 +13,16 @@ from sklearn.metrics import precision_recall_curve, average_precision_score, con
 import seaborn as sns
 
 # Configuration
-TEST_DATA = {
-    'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
-    'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
-}
+TEST_DATA = [
+    {
+        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
+        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
+    },
+    {
+        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned .MP4",
+        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili og 1 idiot.json"
+    }
+]
 
 # Class mapping from COCO attributes to our classification
 CLASS_MAPPING = {
@@ -25,6 +31,7 @@ CLASS_MAPPING = {
     'Good HVT': 'good_hvt',
     'Bad HVT': 'bad_hvt',
     'Civilian': 'civilian',
+    'Military': 'military',
     'Unknown person': 'unknown'
 }
 
@@ -353,25 +360,46 @@ def main():
     print("ARMBAND CLASSIFIER EVALUATION")
     print("="*60)
     
-    # Check files exist
-    if not os.path.exists(TEST_DATA['video']):
-        print(f"ERROR: Video not found: {TEST_DATA['video']}")
-        return
-    if not os.path.exists(TEST_DATA['json']):
-        print(f"ERROR: JSON not found: {TEST_DATA['json']}")
-        return
+    # Collect predictions from all videos
+    all_predictions = []
     
-    # Load ground truth
-    print(f"\nLoading ground truth from: {TEST_DATA['json']}")
-    ground_truth = load_ground_truth(TEST_DATA['json'])
-    print(f"Loaded {len(ground_truth)} annotated frames")
+    for idx, dataset in enumerate(TEST_DATA, 1):
+        video_path = dataset['video']
+        json_path = dataset['json']
+        
+        print(f"\n{'='*60}")
+        print(f"Processing dataset {idx}/{len(TEST_DATA)}")
+        print(f"Video: {video_path}")
+        print(f"JSON: {json_path}")
+        print('='*60)
+        
+        # Check files exist
+        if not os.path.exists(video_path):
+            print(f"WARNING: Video not found, skipping: {video_path}")
+            continue
+        if not os.path.exists(json_path):
+            print(f"WARNING: JSON not found, skipping: {json_path}")
+            continue
+        
+        # Load ground truth
+        print(f"\nLoading ground truth from: {json_path}")
+        ground_truth = load_ground_truth(json_path)
+        print(f"Loaded {len(ground_truth)} annotated frames")
+        
+        # Test on video
+        print(f"\nTesting video: {video_path}")
+        predictions = test_video(video_path, ground_truth, sample_every_n=1)
+        
+        all_predictions.extend(predictions)
+        print(f"Collected {len(predictions)} predictions from this video")
     
-    # Test on video
-    print(f"\nTesting video: {TEST_DATA['video']}")
-    predictions = test_video(TEST_DATA['video'], ground_truth, sample_every_n=1)
+    # Evaluate combined results
+    print(f"\n{'='*60}")
+    print(f"COMBINED EVALUATION")
+    print(f"Total predictions from all videos: {len(all_predictions)}")
+    print('='*60)
     
-    # Evaluate
-    evaluate_predictions(predictions)
+    evaluate_predictions(all_predictions)
     
     print("\n" + "="*60)
     print("EVALUATION COMPLETE!")
