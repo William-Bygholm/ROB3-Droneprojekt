@@ -3,6 +3,7 @@ import cv2
 import joblib
 import numpy as np 
  
+<<<<<<< HEAD
 VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
 MODEL_FILE = "svm_hog_model.pkl_v3"
 WINDOW_SIZE = (128, 256)
@@ -12,6 +13,10 @@ NMS_THRESHOLD = 0.05
 DISPLAY_SCALE = 0.3
 FRAME_SKIP = 20
 SVM_THRESHOLD = 1
+=======
+VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
+MODEL_FILE = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\person_detector_trained.pkl"
+>>>>>>> 60c6891cf56797dc5f46d5f9331b2dd375c39a69
 
 # ---------------- LOAD MODEL ----------------
 print("Loading model...")
@@ -157,14 +162,49 @@ while True:
     final_boxes = merge_close_boxes(nms_boxes, iou_threshold=0.2)
 
 
+<<<<<<< HEAD
     for (x1, y1, x2, y2) in final_boxes:
         cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
     display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
     cv2.imshow("HOG+SVM Detector", display_frame)
+=======
+# ---------------- VIDEO PROCESSING ----------------
+if __name__ == "__main__":
+    cap = cv2.VideoCapture(VIDEO_IN)
+    frame_id = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frame_id += 1
+        if frame_id % FRAME_SKIP != 0:
+            continue
+
+        # Detect people and get bounding boxes
+        final_boxes = detect_people(frame, clf, hog)
+
+        # Draw boxes on frame
+        orig_frame = frame.copy()
+        for (x1, y1, x2, y2) in final_boxes:
+            cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+        # TODO: You can now pass final_boxes to other functions for further analysis
+        # Example: analyze_armbands(frame, final_boxes)
+
+        display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
+    #   cv2.imshow("HOG+SVM Detector", display_frame)
+>>>>>>> 60c6891cf56797dc5f46d5f9331b2dd375c39a69
 
     #    if cv2.waitKey(1) & 0xFF == ord('q'):
     #        break
 
+<<<<<<< HEAD
 cap.release()
 cv2.destroyAllWindows()
+=======
+    cap.release()
+    cv2.destroyAllWindows()
+>>>>>>> 60c6891cf56797dc5f46d5f9331b2dd375c39a69
