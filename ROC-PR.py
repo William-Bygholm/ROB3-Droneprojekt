@@ -8,14 +8,14 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, precision_recall_curve, auc, f1_score
 
 # ---------------- USER CONFIG ----------------
-VIDEO_IN = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
-JSON_COCO = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
-MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
+VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
+JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
+MODEL_FILE = "Person_Detector_Json.pkl"
 
 SCALES = [1.0, 0.8]  # drop small scale for speed
 STEP_SIZES = {1.0: 48, 0.8: 36}
 NMS_THRESHOLD = 0.05
-FRAME_SKIP = 2  # skip frames
+FRAME_SKIP = 50  # skip frames
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
 
@@ -203,7 +203,7 @@ recall = tp / (tp+fn) if (tp+fn) > 0 else 0
 accuracy = (tp+tn)/len(labels)
 
 print(f"\nBest Threshold: {best_threshold:.4f} | F1: {best_f1:.4f} | Precision: {precision:.4f} | Recall: {recall:.4f} | Accuracy: {accuracy:.4f}")
-
+print(f"TP: {tp}, FP: {fp}, FN: {fn}, TN: {tn}")
 # ---------------- PLOT ----------------
 fpr, tpr, _ = roc_curve(labels, scores)
 prec, rec, _ = precision_recall_curve(labels, scores)
