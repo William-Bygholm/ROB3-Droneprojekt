@@ -7,12 +7,11 @@ from sklearn.metrics import classification_report, confusion_matrix
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
 
-def compute_histogram(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
+def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
     Help-function to compute a normalized HSV histogram for the upper part (breast region) of an image.
     This is used both for reference histograms creation and for classification.
     """
-    img = cv2.resize(img, target_size)
     h, w = img.shape[:2]
 
     new_h = max(1, int(h*height_ratio))
@@ -81,10 +80,11 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
 # Validation and test
 
 def show_video_with_annotations(video_path=VIDEO_PATH, json_path=COCO_JSON, id_offsets=(0, 1),
-                                target_size=(64,128), center_y_ratio=0.4, center_x_ratio=0.5,
-                                height_ratio=0.3, width_ratio=0.3):
+                                center_y_ratio=0.35, center_x_ratio=0.5,
+                                height_ratio=0.2, width_ratio=0.3):
     """
     Viser video med bounding boxes fra JSON og crop overlay (det område der bruges til histogram).
+    Ingen resize — crop beregnes direkte på ROI'ens størrelse.
     Tryk 'q' for at stoppe afspilningen.
     """
     CLASS_COLORS = {
@@ -143,38 +143,31 @@ def show_video_with_annotations(video_path=VIDEO_PATH, json_path=COCO_JSON, id_o
             cv2.putText(frame, class_name, (x, max(0,y-5)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-            # --- Crop overlay inde i ROI ---
-            roi = frame[y:y+h, x:x+w]
-            if roi.size > 0:
-                # Resize ROI til target_size for at beregne crop
-                roi_resized = cv2.resize(roi, target_size)
-                h_r, w_r = roi_resized.shape[:2]
-
-                crop_h = max(1, int(h_r * height_ratio))
-                crop_w = max(1, int(w_r * width_ratio))
-                y_center = int(h_r * center_y_ratio)
-                x_center = int(w_r * center_x_ratio)
+            # Crop overlay direkte i ROI
+            roi_h, roi_w = h, w
+            if roi_h > 0 and roi_w > 0:
+                crop_h = max(1, int(roi_h * height_ratio))
+                crop_w = max(1, int(roi_w * width_ratio))
+                y_center = int(roi_h * center_y_ratio)
+                x_center = int(roi_w * center_x_ratio)
 
                 y_start = max(0, y_center - crop_h // 2)
-                y_end   = min(h_r, y_start + crop_h)
+                y_end   = min(roi_h, y_start + crop_h)
                 x_start = max(0, x_center - crop_w // 2)
-                x_end   = min(w_r, x_start + crop_w)
+                x_end   = min(roi_w, x_start + crop_w)
 
-                # Skaler crop-koordinater tilbage til original ROI
-                scale_x = w / float(w_r)
-                scale_y = h / float(h_r)
-                cx1 = int(x + x_start * scale_x)
-                cy1 = int(y + y_start * scale_y)
-                cx2 = int(x + x_end   * scale_x)
-                cy2 = int(y + y_end   * scale_y)
+                # Koordinater i hele frame
+                cx1 = x + x_start
+                cy1 = y + y_start
+                cx2 = x + x_end
+                cy2 = y + y_end
 
-                # Tegn crop overlay (grøn boks inde i ROI)
                 cv2.rectangle(frame, (cx1, cy1), (cx2, cy2), (0,255,0), 2)
 
         # Overlay info
         cv2.putText(frame, f"Frame {frame_idx}/{total_frames}",
                     (10,20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
-
+        
         display_frame = cv2.resize(frame, (0,0), fx=0.75, fy=0.75)
         cv2.imshow("Annotated Video + Crop Overlay", display_frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
