@@ -203,15 +203,9 @@ def get_ground_truth_label(ann):
     return 0 # fallback
 
 def collect_scores(video_path, frame_annotations, reference_histograms, threshold_score, id_offsets=(0,1)):
-    """
-    Loop through video and return y_true (ground truth) and y_score (classification score).
-    """
     cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise IOError(f"Cannot open video {video_path}")
-
-    frame_idx = 0
     y_true, y_score, y_pred = [], [], []
+    frame_idx = 0
 
     while True:
         ret, frame = cap.read()
@@ -223,26 +217,26 @@ def collect_scores(video_path, frame_annotations, reference_histograms, threshol
             if (frame_idx + off) in frame_annotations:
                 anns = frame_annotations[frame_idx + off]
                 break
-        
-        # Crop ROI from bounding box
+
         for ann in anns:
             x, y, w, h = [int(v) for v in ann["bbox"]]
             roi = frame[y:y+h, x:x+w]
             if roi.size == 0:
                 continue
 
-            # Ground truth from JSON
             gt_label = get_ground_truth_label(ann)
             y_true.append(gt_label)
 
-            # Classification with classify_person()
-            pred_label, score = classify_person(roi, reference_histograms, threshold_score=threshold_score)
+            pred_label, match_score = classify_person(
+                roi,
+                reference_histograms,
+                threshold_score=threshold_score
+            )
 
-            # Score for ROC (inverted so higher score = more Military)
-            match_score = max(0.0, min(1.0, 1.0 - score))
+            # ROC-score = match_score (uafhængig af threshold)
             y_score.append(match_score)
 
-            # Predicted label for confusion matrix
+            # binær label afhænger af threshold
             if "Military" in pred_label or "HVT" in pred_label:
                 y_pred.append(1)
             else:
@@ -299,4 +293,4 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
     print("\nClassification Report:\n", classification_report(y_true, y_pred))
 
 # Main
-evaluate_classify_person(VIDEO_PATH, COCO_JSON, threshold_score=0.8)
+evaluate_classify_person(VIDEO_PATH, COCO_JSON, threshold_score=0.9)
