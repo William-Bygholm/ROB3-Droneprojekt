@@ -7,55 +7,25 @@ from sklearn.metrics import roc_curve, precision_recall_curve, auc
 import matplotlib.pyplot as plt
 
 # ---------------- USER INPUT ----------------
-VIDEO_IN = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\Civil person.MP4"
-MODEL_FILE = "svm_hog_model.pkl_v3"
-JSON_COCO = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Træning\Civil person.json"
+# Multiple video/JSON pairs for testing
+TEST_DATASETS = [
+    {
+        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned.MP4",
+        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json"
+    },
+    {
+        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
+        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
+    }
+]
+
+MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
 WINDOW_SIZE = (128, 256)
 SCALES = [1.0, 0.8]
 STEP_SIZES = {1.0: 64, 0.8: 56}
 FRAME_SKIP = 4
 IOU_POSITIVE = 0.5
-
-# ---------------- LOAD MODEL ----------------
-clf = joblib.load(MODEL_FILE)
-hog = cv2.HOGDescriptor(
-    _winSize=WINDOW_SIZE,
-    _blockSize=(32, 32),
-    _blockStride=(16, 16),
-    _cellSize=(8, 8),
-    _nbins=9
-)
-
-# ---------------- LOAD COCO JSON ----------------
-with open(JSON_COCO, "r") as f:
-    coco = json.load(f)
-
-# Map image_id -> frame_id (1-baseret)
-image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
-
-# Map frame_id -> list of boxes [x1,y1,x2,y2]
-frame_to_boxes = {}
-for ann in coco["annotations"]:
-    frame_id = image_id_to_frame[ann["image_id"]]
-    x, y, w, h = ann["bbox"]
-    x1, y1, x2, y2 = int(x), int(y), int(x+w), int(y+h)
-    frame_to_boxes.setdefault(frame_id, []).append([x1, y1, x2, y2])
-
-# ---------------- VIDEO INFO ----------------
-cap_tmp = cv2.VideoCapture(VIDEO_IN)
-ret, frame_tmp = cap_tmp.read()
-if not ret:
-    raise ValueError("Could not read video frame!")
-video_h, video_w = frame_tmp.shape[:2]
-cap_tmp.release()
-
-# COCO billedopløsning (første billede)
-coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
-scale_x = video_w / coco_w
-scale_y = video_h / coco_h
-print(f"Video resolution: {video_w}x{video_h}, COCO: {coco_w}x{coco_h}")
-print(f"Scaling factors - X: {scale_x:.4f}, Y: {scale_y:.4f}")
 
 # ---------------- HELPERS ----------------
 def sliding_windows(img, step, win_size):
@@ -74,76 +44,158 @@ def iou(a, b):
     area_b = (b[2]-b[0]) * (b[3]-b[1])
     return inter / (area_a + area_b - inter + 1e-9)
 
-# ---------------- RUN DETECTION ----------------
-scores = []
-labels = []
+# ---------------- LOAD MODEL ----------------
+model_data = joblib.load(MODEL_FILE)
+if isinstance(model_data, dict):
+    clf = model_data['classifier']
+else:
+    clf = model_data
 
-cap = cv2.VideoCapture(VIDEO_IN)
-total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-frame_id = 0
-start_time = time.time()
+hog = cv2.HOGDescriptor(
+    _winSize=WINDOW_SIZE,
+    _blockSize=(32, 32),
+    _blockStride=(16, 16),
+    _cellSize=(8, 8),
+    _nbins=9
+)
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+# ---------------- PROCESS MULTIPLE DATASETS ----------------
+all_scores = []
+all_labels = []
 
-    frame_id += 1
-    if frame_id % FRAME_SKIP != 0:
+for dataset_idx, dataset in enumerate(TEST_DATASETS, 1):
+    VIDEO_IN = dataset['video']
+    JSON_COCO = dataset['json']
+    
+    print(f"\n{'='*60}")
+    print(f"Processing dataset {dataset_idx}/{len(TEST_DATASETS)}")
+    print(f"Video: {VIDEO_IN}")
+    print(f"JSON: {JSON_COCO}")
+    print('='*60)
+    
+    # Check files exist
+    if not os.path.exists(VIDEO_IN):
+        print(f"WARNING: Video not found, skipping: {VIDEO_IN}")
         continue
+    if not os.path.exists(JSON_COCO):
+        print(f"WARNING: JSON not found, skipping: {JSON_COCO}")
+        continue
+    
+    # ---------------- LOAD COCO JSON ----------------
+    with open(JSON_COCO, "r") as f:
+        coco = json.load(f)
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    h0, w0 = gray.shape[:2]
+    # Map image_id -> frame_id (1-baseret)
+    image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
 
-    # Ground-truth for denne frame, skaleret
-    gt_boxes = frame_to_boxes.get(frame_id, [])
-    gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)] for x1,y1,x2,y2 in gt_boxes]
+    # Map frame_id -> list of boxes [x1,y1,x2,y2]
+    frame_to_boxes = {}
+    for ann in coco["annotations"]:
+        frame_id = image_id_to_frame.get(ann["image_id"])
+        if frame_id is None:
+            continue
+        x, y, w, h = ann["bbox"]
+        x1, y1, x2, y2 = int(x), int(y), int(x+w), int(y+h)
+        frame_to_boxes.setdefault(frame_id, []).append([x1, y1, x2, y2])
 
-    for scale in SCALES:
-        resized = cv2.resize(gray, None, fx=scale, fy=scale)
-        step = STEP_SIZES[scale]
-        scale_x_win = w0 / resized.shape[1]
-        scale_y_win = h0 / resized.shape[0]
+    # ---------------- VIDEO INFO ----------------
+    cap_tmp = cv2.VideoCapture(VIDEO_IN)
+    ret, frame_tmp = cap_tmp.read()
+    if not ret:
+        print(f"ERROR: Could not read video frame from {VIDEO_IN}")
+        cap_tmp.release()
+        continue
+    video_h, video_w = frame_tmp.shape[:2]
+    cap_tmp.release()
 
-        for x, y, win in sliding_windows(resized, step, WINDOW_SIZE):
-            if win.shape != (WINDOW_SIZE[1], WINDOW_SIZE[0]):
-                continue
+    # COCO billedopløsning (første billede)
+    coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
+    scale_x = video_w / coco_w
+    scale_y = video_h / coco_h
+    print(f"Video resolution: {video_w}x{video_h}, COCO: {coco_w}x{coco_h}")
+    print(f"Scaling factors - X: {scale_x:.4f}, Y: {scale_y:.4f}")
 
-            feat = hog.compute(win).ravel()
-            score = clf.decision_function([feat])[0]
+    # ---------------- RUN DETECTION ----------------
+    scores = []
+    labels = []
 
-            x1 = int(x * scale_x_win)
-            y1 = int(y * scale_y_win)
-            x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
-            y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
-            box = [x1, y1, x2, y2]
+    cap = cv2.VideoCapture(VIDEO_IN)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_id = 0
+    start_time = time.time()
 
-            # IoU match
-            label = 0
-            for g in gt_boxes_scaled:
-                if iou(box, g) > IOU_POSITIVE:
-                    label = 1
-                    break
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-            scores.append(score)
-            labels.append(label)
+        frame_id += 1
+        if frame_id % FRAME_SKIP != 0:
+            continue
 
-    # Progress
-    elapsed = time.time() - start_time
-    progress = frame_id / total_frames
-    if progress > 0:
-        est_total = elapsed / progress
-        remaining = est_total - elapsed
-        print(f"Frame {frame_id}/{total_frames} "
-              f"({progress*100:.2f}%), "
-              f"Elapsed: {elapsed:.1f}s, "
-              f"Remaining: {remaining:.1f}s", end="\r")
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        h0, w0 = gray.shape[:2]
 
-cap.release()
-print("\nVideo processing complete.")
+        # Ground-truth for denne frame, skaleret
+        gt_boxes = frame_to_boxes.get(frame_id, [])
+        gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)] for x1,y1,x2,y2 in gt_boxes]
 
-scores = np.array(scores)
-labels = np.array(labels)
+        for scale in SCALES:
+            resized = cv2.resize(gray, None, fx=scale, fy=scale)
+            step = STEP_SIZES[scale]
+            scale_x_win = w0 / resized.shape[1]
+            scale_y_win = h0 / resized.shape[0]
+
+            for x, y, win in sliding_windows(resized, step, WINDOW_SIZE):
+                if win.shape != (WINDOW_SIZE[1], WINDOW_SIZE[0]):
+                    continue
+
+                feat = hog.compute(win).ravel()
+                score = clf.decision_function([feat])[0]
+
+                x1 = int(x * scale_x_win)
+                y1 = int(y * scale_y_win)
+                x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
+                y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
+                box = [x1, y1, x2, y2]
+
+                # IoU match
+                label = 0
+                for g in gt_boxes_scaled:
+                    if iou(box, g) > IOU_POSITIVE:
+                        label = 1
+                        break
+
+                scores.append(score)
+                labels.append(label)
+
+        # Progress
+        elapsed = time.time() - start_time
+        progress = frame_id / total_frames
+        if progress > 0:
+            est_total = elapsed / progress
+            remaining = est_total - elapsed
+            print(f"Frame {frame_id}/{total_frames} "
+                  f"({progress*100:.2f}%), "
+                  f"Elapsed: {elapsed:.1f}s, "
+                  f"Remaining: {remaining:.1f}s", end="\r")
+
+    cap.release()
+    print(f"\nVideo {dataset_idx} processing complete. Collected {len(scores)} detections.")
+    
+    # Add to combined results
+    all_scores.extend(scores)
+    all_labels.extend(labels)
+
+# ---------------- COMBINED RESULTS ----------------
+print(f"\n{'='*60}")
+print(f"COMBINED RESULTS FROM ALL DATASETS")
+print(f"Total detections: {len(all_scores)}")
+print(f"Positives: {sum(all_labels)}, Negatives: {len(all_labels) - sum(all_labels)}")
+print('='*60)
+
+scores = np.array(all_scores)
+labels = np.array(all_labels)
 
 # ---------------- PLOT ROC + PR ----------------
 fpr, tpr, _ = roc_curve(labels, scores)
