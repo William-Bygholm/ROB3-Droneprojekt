@@ -22,10 +22,10 @@ TEST_DATA = [
 
 # Class mapping from COCO attributes to our classification
 CLASS_MAPPING = {
-    'Good soldier': 'good',
-    'Bad soldier': 'bad',
-    'Good soldier (HVT)': 'good_hvt',
-    'Bad soldier (HVT)': 'bad_hvt',
+    'Good military': 'good',
+    'Bad military': 'bad',
+    'Good military (HVT)': 'good_hvt',
+    'Bad military (HVT)': 'bad_hvt',
     'Civilian': 'civilian',
     'Military': 'military',
     'Unknown person': 'unknown'
@@ -90,8 +90,6 @@ def classify_person_armband(roi, display_debug=False):
     
     # Crop to focus on upper body (where armbands are)
     cropped = crop_image(roi)
-    cv2.imshow("Cropped ROI", cropped)
-    cv2.waitKey(1)
     
     # Apply blob analysis
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
