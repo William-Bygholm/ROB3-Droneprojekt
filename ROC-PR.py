@@ -1,80 +1,37 @@
-import os
-import time
-import json
+# validator.py
 import cv2
 import joblib
 import numpy as np
+import json
+import time
+import os
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, precision_recall_curve, auc, f1_score
 
-# ---------------- CONFIG: SINGLE VIDEO + JSON ----------------
-VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
-JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
-MODEL_FILE = "Person_Detector_Json.pkl"
+# ---------------- USER CONFIG ----------------
+VIDEO_IN = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
+JSON_COCO = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
+MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
-# HOG window and scanning parameters
-WINDOW_SIZE = (128, 256)  # (width, height)
-SCALES = [1.0, 0.8]       # pyramid scales
-STEP_SIZES = {1.0: 64, 0.8: 56}
-FRAME_SKIP = 1            # process every FRAME_SKIP-th frame
-IOU_POSITIVE = 0.5        # IoU threshold for positive label
-
-# Memory-friendly options
-DOWNSCALE_MAX_W = None    # e.g., 1280 to limit width (None to disable)
-DOWNSCALE_MAX_H = None    # e.g., 720 to limit height (None to disable)
-MAX_FRAMES = None         # e.g., 150 to limit frames processed (None to disable)
-
-# ---------------- HELPERS ----------------
-def sliding_windows(img, step, win_size):
-    w, h = win_size
-    H, W = img.shape[:2]
-    if H < h or W < w:
-        return  # no windows if image smaller than win size
-    for y in range(0, H - h + 1, step):
-        for x in range(0, W - w + 1, step):
-            yield x, y, img[y:y+h, x:x+w]
-
-def iou(a, b):
-    x1 = max(a[0], b[0])
-    y1 = max(a[1], b[1])
-    x2 = min(a[2], b[2])
-    y2 = min(a[3], b[3])
-    inter_w = max(0, x2 - x1)
-    inter_h = max(0, y2 - y1)
-    inter = inter_w * inter_h
-    area_a = max(0, (a[2] - a[0])) * max(0, (a[3] - a[1]))
-    area_b = max(0, (b[2] - b[0])) * max(0, (b[3] - b[1]))
-    denom = (area_a + area_b - inter)
-    return inter / (denom + 1e-9)
-
-def safe_read_frame(cap):
-    ret, frame = cap.read()
-    if not ret or frame is None:
-        return False, None
-    h, w = frame.shape[:2]
-    if h <= 0 or w <= 0 or h > 8000 or w > 8000:
-        return False, None
-    return True, frame
-
-def maybe_downscale(frame, max_w=None, max_h=None):
-    if max_w is None and max_h is None:
-        return frame
-    h, w = frame.shape[:2]
-    scale_w = 1.0 if max_w is None else min(1.0, max_w / float(w))
-    scale_h = 1.0 if max_h is None else min(1.0, max_h / float(h))
-    scale = min(scale_w, scale_h)
-    if scale >= 1.0:
-        return frame
-    new_w = max(1, int(w * scale))
-    new_h = max(1, int(h * scale))
-    return cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+SCALES = [1.0, 0.8, 0.64]
+STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
+NMS_THRESHOLD = 0.05
+FRAME_SKIP = 10
+WINDOW_SIZE = (128, 256)
+IOU_POSITIVE = 0.5
 
 # ---------------- LOAD MODEL ----------------
-if not os.path.exists(MODEL_FILE):
-    raise FileNotFoundError(f"Model file not found: {MODEL_FILE}")
-
+print("Loading model...")
 model_data = joblib.load(MODEL_FILE)
-clf = model_data['classifier'] if isinstance(model_data, dict) and 'classifier' in model_data else model_data
+if isinstance(model_data, dict):
+    clf = model_data.get("classifier", model_data)
+    hog_params = model_data.get("hog_params", None)
+    if hog_params is not None:
+        WINDOW_SIZE = hog_params.get("winSize", (128, 256))
+        print(f"Loaded model with custom HOG params: {WINDOW_SIZE}")
+else:
+    clf = model_data
+    print("Loaded SVM directly.")
 
 hog = cv2.HOGDescriptor(
     _winSize=WINDOW_SIZE,
@@ -84,153 +41,158 @@ hog = cv2.HOGDescriptor(
     _nbins=9
 )
 
-# ---------------- CHECK INPUTS ----------------
-if not os.path.exists(VIDEO_IN):
-    raise FileNotFoundError(f"Video not found: {VIDEO_IN}")
-if not os.path.exists(JSON_COCO):
-    raise FileNotFoundError(f"JSON not found: {JSON_COCO}")
+# ---------------- HELPERS ----------------
+def sliding_windows(img, step, win_size):
+    w, h = win_size
+    for y in range(0, img.shape[0] - h + 1, step):
+        for x in range(0, img.shape[1] - w + 1, step):
+            yield x, y, img[y:y+h, x:x+w]
+
+def nms_opencv(detections, scores, score_threshold, nms_threshold):
+    if len(detections) == 0:
+        return [], []
+    boxes_xywh = [[x1, y1, x2 - x1, y2 - y1] for (x1, y1, x2, y2) in detections]
+    scores = [float(s) for s in scores]
+    indices = cv2.dnn.NMSBoxes(boxes_xywh, scores, score_threshold, nms_threshold)
+    if len(indices) == 0:
+        return [], []
+    indices = indices.flatten()
+    return [detections[i] for i in indices], [scores[i] for i in indices]
+
+def merge_close_boxes(boxes, scores, iou_threshold=0.2):
+    merged = []
+    merged_scores = []
+    used = [False] * len(boxes)
+    for i in range(len(boxes)):
+        if used[i]:
+            continue
+        x1, y1, x2, y2 = boxes[i]
+        group = [boxes[i]]
+        group_scores = [scores[i]]
+        used[i] = True
+        for j in range(i+1, len(boxes)):
+            if used[j]:
+                continue
+            xx1, yy1, xx2, yy2 = boxes[j]
+            inter_x1 = max(x1, xx1)
+            inter_y1 = max(y1, yy1)
+            inter_x2 = min(x2, xx2)
+            inter_y2 = min(y2, yy2)
+            inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
+            area1 = (x2 - x1) * (y2 - y1)
+            area2 = (xx2 - xx1) * (yy2 - yy1)
+            iou = inter_area / float(area1 + area2 - inter_area + 1e-9)
+            if iou > iou_threshold:
+                group.append(boxes[j])
+                group_scores.append(scores[j])
+                used[j] = True
+        gx1 = min(b[0] for b in group)
+        gy1 = min(b[1] for b in group)
+        gx2 = max(b[2] for b in group)
+        gy2 = max(b[3] for b in group)
+        merged.append([gx1, gy1, gx2, gy2])
+        merged_scores.append(max(group_scores))
+    return merged, merged_scores
+
+def iou(a, b):
+    x1 = max(a[0], b[0])
+    y1 = max(a[1], b[1])
+    x2 = min(a[2], b[2])
+    y2 = min(a[3], b[3])
+    inter = max(0, x2-x1) * max(0, y2-y1)
+    area_a = (a[2]-a[0]) * (a[3]-a[1])
+    area_b = (b[2]-b[0]) * (b[3]-b[1])
+    return inter / (area_a + area_b - inter + 1e-9)
 
 # ---------------- LOAD COCO JSON ----------------
 with open(JSON_COCO, "r") as f:
     coco = json.load(f)
 
-if "images" not in coco or "annotations" not in coco or len(coco["images"]) == 0:
-    raise ValueError("Invalid COCO JSON: missing 'images' or 'annotations'")
-
-# Map image_id -> frame_id (1-based by enumeration)
-image_id_to_frame = {img["id"]: idx + 1 for idx, img in enumerate(coco["images"])}
-
-# Map frame_id -> list of boxes [x1,y1,x2,y2] in COCO resolution
+image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
 frame_to_boxes = {}
 for ann in coco["annotations"]:
-    frame_id = image_id_to_frame.get(ann.get("image_id"))
+    frame_id = image_id_to_frame.get(ann["image_id"])
     if frame_id is None:
         continue
     x, y, w, h = ann["bbox"]
-    x1, y1, x2, y2 = int(x), int(y), int(x + w), int(y + h)
-    frame_to_boxes.setdefault(frame_id, []).append([x1, y1, x2, y2])
+    frame_to_boxes.setdefault(frame_id, []).append([int(x), int(y), int(x+w), int(y+h)])
 
-# ---------------- VIDEO INFO + SCALING ----------------
-cap_tmp = cv2.VideoCapture(VIDEO_IN)
-ok, frame_tmp = safe_read_frame(cap_tmp)
-if not ok:
-    cap_tmp.release()
-    raise RuntimeError(f"Could not read a valid frame from: {VIDEO_IN}")
+coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
 
-# Apply optional downscale to determine working resolution
-frame_tmp = maybe_downscale(frame_tmp, DOWNSCALE_MAX_W, DOWNSCALE_MAX_H)
-video_h, video_w = frame_tmp.shape[:2]
-cap_tmp.release()
-
-# COCO resolution (use first image entry)
-coco_w = int(coco["images"][0]["width"])
-coco_h = int(coco["images"][0]["height"])
-if coco_w <= 0 or coco_h <= 0:
-    raise ValueError("Invalid COCO image width/height")
-
-scale_x_coco_to_video = video_w / float(coco_w)
-scale_y_coco_to_video = video_h / float(coco_h)
-
-print(f"[INFO] Video resolution: {video_w}x{video_h}, COCO: {coco_w}x{coco_h}")
-print(f"[INFO] Scaling factors - X: {scale_x_coco_to_video:.4f}, Y: {scale_y_coco_to_video:.4f}")
-
-# ---------------- RUN DETECTION ----------------
-scores = []
-labels = []
+# ---------------- VALIDATION LOOP ----------------
+scores_all = []
+labels_all = []
 
 cap = cv2.VideoCapture(VIDEO_IN)
-total_frames = int(max(1, cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 frame_id = 0
 start_time = time.time()
 
 while True:
-    ok, frame = safe_read_frame(cap)
-    if not ok:
+    ret, frame = cap.read()
+    if not ret:
         break
-
     frame_id += 1
-    if MAX_FRAMES is not None and frame_id > MAX_FRAMES:
-        break
     if frame_id % FRAME_SKIP != 0:
         continue
 
-    # Optional downscale for memory
-    frame = maybe_downscale(frame, DOWNSCALE_MAX_W, DOWNSCALE_MAX_H)
-
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     h0, w0 = gray.shape[:2]
-
-    # Ground-truth for this frame, scaled to working video resolution
+    scale_x = w0 / coco_w
+    scale_y = h0 / coco_h
     gt_boxes = frame_to_boxes.get(frame_id, [])
-    gt_boxes_scaled = [
-        [
-            int(x1 * scale_x_coco_to_video),
-            int(y1 * scale_y_coco_to_video),
-            int(x2 * scale_x_coco_to_video),
-            int(y2 * scale_y_coco_to_video),
-        ]
-        for (x1, y1, x2, y2) in gt_boxes
-    ]
+    gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)] for x1,y1,x2,y2 in gt_boxes]
 
+    detections, scores = [], []
     for scale in SCALES:
-        # Resize gray for scanning at this pyramid level
-        resized = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-        step = STEP_SIZES.get(scale, 64)
-
-        Hs, Ws = resized.shape[:2]
-        # Map window coordinates back to original working resolution
-        scale_x_win = w0 / float(Ws)
-        scale_y_win = h0 / float(Hs)
-
+        resized = cv2.resize(gray, None, fx=scale, fy=scale)
+        step = STEP_SIZES[scale]
+        scale_x_win = w0 / resized.shape[1]
+        scale_y_win = h0 / resized.shape[0]
         for x, y, win in sliding_windows(resized, step, WINDOW_SIZE):
             if win.shape != (WINDOW_SIZE[1], WINDOW_SIZE[0]):
                 continue
-
             feat = hog.compute(win).ravel()
-            # Decision function expects 2D array
             score = clf.decision_function([feat])[0]
-
             x1 = int(x * scale_x_win)
             y1 = int(y * scale_y_win)
             x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
             y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
-            box = [x1, y1, x2, y2]
-
-            # IoU match to any GT box
-            label = 0
-            for g in gt_boxes_scaled:
-                if iou(box, g) > IOU_POSITIVE:
-                    label = 1
-                    break
-
+            detections.append([x1, y1, x2, y2])
             scores.append(score)
-            labels.append(label)
+
+    # NMS + merge
+    nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
+    final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
+
+    for box, score in zip(final_boxes, final_scores):
+        label = 0
+        for g in gt_boxes_scaled:
+            if iou(box, g) > IOU_POSITIVE:
+                label = 1
+                break
+        scores_all.append(score)
+        labels_all.append(label)
 
     # Progress
     elapsed = time.time() - start_time
-    progress = frame_id / max(1, total_frames)
+    progress = frame_id / total_frames
     if progress > 0:
         est_total = elapsed / progress
-        remaining = max(0.0, est_total - elapsed)
-        print(
-            f"Frame {frame_id}/{total_frames} ({progress*100:.2f}%), "
-            f"Elapsed: {elapsed:.1f}s, Remaining: {remaining:.1f}s      ",
-            end="\r"
-        )
+        remaining = est_total - elapsed
+        print(f"Frame {frame_id}/{total_frames} "
+              f"({progress*100:.2f}%), "
+              f"Elapsed: {elapsed:.1f}s, "
+              f"Remaining: {remaining:.1f}s", end="\r")
 
 cap.release()
-print(f"\n[INFO] Processing complete. Collected {len(scores)} detections.")
+print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections.")
 
 # ---------------- METRICS & THRESHOLD ----------------
-scores = np.array(scores, dtype=np.float32)
-labels = np.array(labels, dtype=np.int32)
+scores = np.array(scores_all, dtype=np.float32)
+labels = np.array(labels_all, dtype=np.int32)
 
-if len(scores) == 0:
-    raise RuntimeError("No detections collected. Check model, window size, or video/JSON alignment.")
-
-pos_count = int(labels.sum())
-neg_count = int(len(labels) - pos_count)
-print(f"[INFO] Total detections: {len(scores)} | Positives: {pos_count} | Negatives: {neg_count}")
+print(f"[INFO] Positives: {labels.sum()}, Negatives: {len(labels) - labels.sum()}")
 
 # Find best threshold by F1
 thresholds = np.linspace(scores.min(), scores.max(), 100)
@@ -254,9 +216,9 @@ precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
 recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
 accuracy = (tp + tn) / float(len(labels))
 
-print("\n" + "=" * 60)
+print("\n" + "="*60)
 print("OPTIMAL THRESHOLD ANALYSIS")
-print("=" * 60)
+print("="*60)
 print(f"Best Threshold: {best_threshold:.4f}")
 print(f"Best F1 Score: {best_f1:.4f}")
 print("\nMetrics at best threshold:")
@@ -266,18 +228,16 @@ print(f"  Accuracy:  {accuracy:.4f}")
 print("\nConfusion Matrix:")
 print(f"  TP: {tp:6d}  FP: {fp:6d}")
 print(f"  FN: {fn:6d}  TN: {tn:6d}")
-print("=" * 60)
+print("="*60)
 
 # ---------------- PLOT ROC + PR ----------------
-fpr, tpr, roc_thresholds = roc_curve(labels, scores)
-prec, rec, pr_thresholds = precision_recall_curve(labels, scores)
+fpr, tpr, _ = roc_curve(labels, scores)
+prec, rec, _ = precision_recall_curve(labels, scores)
 
 plt.figure()
 plt.plot(fpr, tpr, label=f"AUC = {auc(fpr, tpr):.4f}")
-# highlight operating point at best threshold
-fpr_pt = fp / max(1, (fp + tn))
-tpr_pt = tp / max(1, (tp + fn))
-plt.scatter([fpr_pt], [tpr_pt], color='red', s=100, zorder=5, label=f'Best thr = {best_threshold:.4f}')
+plt.scatter([fp/(fp+tn+1e-9)], [tp/(tp+fn+1e-9)], color='red', s=100, zorder=5,
+            label=f'Best thr = {best_threshold:.4f}')
 plt.title("ROC Curve")
 plt.xlabel("False Positive Rate")
 plt.ylabel("True Positive Rate")
@@ -287,7 +247,8 @@ plt.show()
 
 plt.figure()
 plt.plot(rec, prec, label=f"AUC = {auc(rec, prec):.4f}")
-plt.scatter([recall], [precision], color='red', s=100, zorder=5, label=f'Best thr = {best_threshold:.4f}')
+plt.scatter([recall], [precision], color='red', s=100, zorder=5,
+            label=f'Best thr = {best_threshold:.4f}')
 plt.title("Precision-Recall Curve")
 plt.xlabel("Recall")
 plt.ylabel("Precision")
@@ -295,11 +256,11 @@ plt.grid(True)
 plt.legend()
 plt.show()
 
-print("\n" + "=" * 60)
+print("\n" + "="*60)
 print("SUMMARY")
-print("=" * 60)
+print("="*60)
 print(f"AUC ROC: {auc(fpr, tpr):.4f}")
 print(f"AUC PR:  {auc(rec, prec):.4f}")
 print(f"Best Threshold: {best_threshold:.4f}")
 print(f"Best F1 Score:  {best_f1:.4f}")
-print("=" * 60)
+print("="*60)
