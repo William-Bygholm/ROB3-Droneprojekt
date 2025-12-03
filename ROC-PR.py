@@ -11,12 +11,12 @@ import os
 # Multiple video/JSON pairs for testing
 TEST_DATASETS = [
     {
-        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned.MP4",
-        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json"
+        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 mili med blå bånd .MP4",
+        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
     },
     {
-        'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
-        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
+        #'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
+        #'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
     }
 ]
 
