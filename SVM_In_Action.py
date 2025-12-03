@@ -1,13 +1,11 @@
 # detector.py
 import cv2
 import joblib
-<<<<<<< HEAD
 import numpy as np
 
 VIDEO_IN = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
 MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
-WINDOW_SIZE = (128, 256)
 SCALES = [1.0, 0.8, 0.64]
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
 
@@ -16,40 +14,33 @@ DISPLAY_SCALE = 0.3
 FRAME_SKIP = 20
 SVM_THRESHOLD = 0.8
 
-=======
-import numpy as np 
- 
-<<<<<<< HEAD
-VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
-MODEL_FILE = "svm_hog_model.pkl_v3"
-WINDOW_SIZE = (128, 256)
-SCALES = [1.0, 0.8, 0.64]
-STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
-NMS_THRESHOLD = 0.05
-DISPLAY_SCALE = 0.3
-FRAME_SKIP = 20
-SVM_THRESHOLD = 1
-=======
-VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
-MODEL_FILE = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\person_detector_trained.pkl"
->>>>>>> 60c6891cf56797dc5f46d5f9331b2dd375c39a69
->>>>>>> c4afe472db88a3f34233f29638e2693980e95687
 
 # ---------------- LOAD MODEL ----------------
 print("Loading model...")
 model_data = joblib.load(MODEL_FILE)
 
-clf = model_data["classifier"]
-hog_params = model_data["hog_params"]
+# Fallback hvis pickle kun indeholder SVM
+if isinstance(model_data, dict):
+    clf = model_data.get("classifier", model_data)
+    hog_params = model_data.get("hog_params", None)
+    if hog_params is not None:
+        WINDOW_SIZE = hog_params.get("winSize", (128, 256))
+        print(f"Loaded model with custom HOG params: {WINDOW_SIZE}")
+    else:
+        WINDOW_SIZE = (128, 256)
+        print("No hog_params in model dict, using default HOG window size.")
+else:
+    clf = model_data
+    WINDOW_SIZE = (128, 256)
+    print("Loaded SVM directly, using default HOG window size.")
 
-WINDOW_SIZE = hog_params["winSize"]
-
+# HOG descriptor
 hog = cv2.HOGDescriptor(
-    _winSize=hog_params["winSize"],
-    _blockSize=hog_params["blockSize"],
-    _blockStride=hog_params["blockStride"],
-    _cellSize=hog_params["cellSize"],
-    _nbins=hog_params["nbins"]
+    _winSize=WINDOW_SIZE,
+    _blockSize=(32, 32),
+    _blockStride=(16, 16),
+    _cellSize=(8, 8),
+    _nbins=9
 )
 
 
@@ -153,18 +144,7 @@ def detect_people(frame, clf, hog):
     return final_boxes
 
 
-<<<<<<< HEAD
 # ---------------- MAIN LOOP ----------------
-=======
-<<<<<<< HEAD
-    for (x1, y1, x2, y2) in final_boxes:
-        cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-
-    display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
-    cv2.imshow("HOG+SVM Detector", display_frame)
-=======
-# ---------------- VIDEO PROCESSING ----------------
->>>>>>> c4afe472db88a3f34233f29638e2693980e95687
 if __name__ == "__main__":
     cap = cv2.VideoCapture(VIDEO_IN)
     frame_id = 0
@@ -188,22 +168,8 @@ if __name__ == "__main__":
         disp = cv2.resize(out, None, fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
         cv2.imshow("HOG+SVM Detector", disp)
 
-<<<<<<< HEAD
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-=======
-        display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
-    #   cv2.imshow("HOG+SVM Detector", display_frame)
->>>>>>> 60c6891cf56797dc5f46d5f9331b2dd375c39a69
 
-    #    if cv2.waitKey(1) & 0xFF == ord('q'):
-    #        break
->>>>>>> c4afe472db88a3f34233f29638e2693980e95687
-
-<<<<<<< HEAD
-cap.release()
-cv2.destroyAllWindows()
-=======
     cap.release()
     cv2.destroyAllWindows()
->>>>>>> 60c6891cf56797dc5f46d5f9331b2dd375c39a69
