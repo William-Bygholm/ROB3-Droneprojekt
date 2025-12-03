@@ -19,10 +19,10 @@ TRAINING_DATA = [
     }
 ]
 
-ADDITIONAL_POSITIVES_DIR = r"C:\Users\alexa\Desktop\Pos"
-ADDITIONAL_NEGATIVES_DIR = r"C:\Users\alexa\Desktop\Neg"
+ADDITIONAL_POSITIVES_DIR = 0
+ADDITIONAL_NEGATIVES_DIR = 0
 
-OUTPUT_MODEL = "Person_Detector_Json+YOLO.pkl"
+OUTPUT_MODEL = "Person_Detector_Json.pkl"
 WINDOW_SIZE = (128, 256)
 NEGATIVE_SAMPLES_PER_FRAME = 5
 MAX_FRAME_WIDTH = 1280   # downscale hvis video er meget stor
@@ -184,10 +184,10 @@ def main():
         frame_annotations, _ = trainer.load_annotations(json_path)
         trainer.collect_training_data(video_path, frame_annotations)
 
-    if ADDITIONAL_POSITIVES_DIR and os.path.exists(ADDITIONAL_POSITIVES_DIR):
-        trainer.load_positive_images_from_folder(ADDITIONAL_POSITIVES_DIR)
-    if ADDITIONAL_NEGATIVES_DIR and os.path.exists(ADDITIONAL_NEGATIVES_DIR):
-        trainer.load_negative_images_from_folder(ADDITIONAL_NEGATIVES_DIR)
+    #if ADDITIONAL_POSITIVES_DIR and os.path.exists(ADDITIONAL_POSITIVES_DIR):
+    #    trainer.load_positive_images_from_folder(ADDITIONAL_POSITIVES_DIR)
+    #if ADDITIONAL_NEGATIVES_DIR and os.path.exists(ADDITIONAL_NEGATIVES_DIR):
+    #    trainer.load_negative_images_from_folder(ADDITIONAL_NEGATIVES_DIR)
 
     print(f"[INFO] Total positives: {len(trainer.positive_samples)}, Total negatives: {len(trainer.negative_samples)}")
     if len(trainer.positive_samples) < 5:
