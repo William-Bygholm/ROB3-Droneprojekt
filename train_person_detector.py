@@ -1,8 +1,3 @@
-"""
-Train a person detector using manually annotated COCO data.
-Supports both HOG+SVM and deep learning approaches.
-"""
-
 import cv2
 import numpy as np
 import json
@@ -24,12 +19,14 @@ TRAINING_DATA = [
     }
 ]
 
-ADDITIONAL_POSITIVES_DIR = r"C:\Users\alexa\Desktop\Pos"  # Set to None to skip
-ADDITIONAL_NEGATIVES_DIR = r"C:\Users\alexa\Desktop\Neg"  # Set to None to skip
+ADDITIONAL_POSITIVES_DIR = r"C:\Users\alexa\Desktop\Pos"
+ADDITIONAL_NEGATIVES_DIR = r"C:\Users\alexa\Desktop\Neg"
 
 OUTPUT_MODEL = "Person_Detector_Json+YOLO.pkl"
 WINDOW_SIZE = (128, 256)
 NEGATIVE_SAMPLES_PER_FRAME = 5
+MAX_FRAME_WIDTH = 1280   # downscale hvis video er meget stor
+MAX_FRAME_HEIGHT = 720
 
 # ---------------- TRAINER CLASS ---------------- #
 class PersonDetectorTrainer:
@@ -45,30 +42,17 @@ class PersonDetectorTrainer:
         self.positive_samples = []
         self.negative_samples = []
 
-    # ---------- CLEAR FUNCTIONS ---------- #
-    def clear_positive_samples(self):
-        self.positive_samples = []
-
-    def clear_negative_samples(self):
-        self.negative_samples = []
-
-    def clear_all_samples(self):
-        self.positive_samples = []
-        self.negative_samples = []
-
     # ---------- LOAD ANNOTATIONS ---------- #
     def load_annotations(self, json_path):
         with open(json_path, 'r') as f:
             data = json.load(f)
         frame_annotations = {}
-        for ann in data['annotations']:
+        for ann in data.get('annotations', []):
             image_id = ann['image_id']
-            if image_id not in frame_annotations:
-                frame_annotations[image_id] = []
-            frame_annotations[image_id].append(ann)
-        return frame_annotations, data['images']
+            frame_annotations.setdefault(image_id, []).append(ann)
+        return frame_annotations, data.get('images', [])
 
-    # ---------- POSITIVE / NEGATIVE SAMPLE EXTRACTION ---------- #
+    # ---------- SAMPLE EXTRACTION ---------- #
     def extract_positive_samples(self, frame, annotations):
         samples = []
         for ann in annotations:
@@ -79,7 +63,7 @@ class PersonDetectorTrainer:
             try:
                 resized = cv2.resize(roi, self.window_size)
                 samples.append(resized)
-            except:
+            except cv2.error:
                 continue
         return samples
 
@@ -117,51 +101,6 @@ class PersonDetectorTrainer:
             features.append(hog_features.ravel())
         return np.array(features)
 
-    # ---------- LOAD EXTRA POSITIVES / NEGATIVES FROM FOLDER ---------- #
-    def load_positive_images_from_folder(self, folder_path):
-        if not os.path.exists(folder_path):
-            print(f"WARNING: Folder not found: {folder_path}")
-            return
-        print(f"\nLoading positive samples from: {folder_path}")
-        extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif']
-        loaded = skipped = 0
-        for root, _, files in os.walk(folder_path):
-            for f in files:
-                if os.path.splitext(f)[1].lower() not in extensions:
-                    continue
-                img = cv2.imread(os.path.join(root, f))
-                if img is None:
-                    skipped += 1
-                    continue
-                try:
-                    self.positive_samples.append(cv2.resize(img, self.window_size))
-                    loaded += 1
-                except:
-                    skipped += 1
-        print(f"Loaded {loaded} extra positive samples. Skipped {skipped} files.")
-
-    def load_negative_images_from_folder(self, folder_path):
-        if not os.path.exists(folder_path):
-            print(f"WARNING: Negative folder not found: {folder_path}")
-            return
-        print(f"\nLoading negative samples from: {folder_path}")
-        extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif']
-        loaded = skipped = 0
-        for root, _, files in os.walk(folder_path):
-            for f in files:
-                if os.path.splitext(f)[1].lower() not in extensions:
-                    continue
-                img = cv2.imread(os.path.join(root, f))
-                if img is None:
-                    skipped += 1
-                    continue
-                try:
-                    self.negative_samples.append(cv2.resize(img, self.window_size))
-                    loaded += 1
-                except:
-                    skipped += 1
-        print(f"Loaded {loaded} negative samples. Skipped {skipped} files.")
-
     # ---------- COLLECT DATA FROM VIDEO ---------- #
     def collect_training_data(self, video_path, frame_annotations, sample_every_n_frames=1):
         cap = cv2.VideoCapture(video_path)
@@ -169,9 +108,12 @@ class PersonDetectorTrainer:
             print(f"[ERROR] Cannot open video: {video_path}")
             return
 
+        # downscale hvis video er stor
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, MAX_FRAME_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, MAX_FRAME_HEIGHT)
+
         frame_idx = 0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        frames_with_annotations = 0
 
         while True:
             ret, frame = cap.read()
@@ -185,13 +127,7 @@ class PersonDetectorTrainer:
                 frame_idx += 1
                 continue
 
-            matching_annotations = []
-            for possible_id in [frame_idx, frame_idx+1, frame_idx-1]:
-                if possible_id in frame_annotations:
-                    matching_annotations = frame_annotations[possible_id]
-                    frames_with_annotations += 1
-                    break
-
+            matching_annotations = frame_annotations.get(frame_idx, [])
             if matching_annotations:
                 self.positive_samples.extend(self.extract_positive_samples(frame, matching_annotations))
                 self.negative_samples.extend(self.extract_negative_samples(frame, matching_annotations, NEGATIVE_SAMPLES_PER_FRAME))
@@ -201,11 +137,11 @@ class PersonDetectorTrainer:
                 break
 
         cap.release()
-        print(f"\nData collection finished. Positives: {len(self.positive_samples)}, Negatives: {len(self.negative_samples)}")
+        print(f"[INFO] Data collection finished. Positives: {len(self.positive_samples)}, Negatives: {len(self.negative_samples)}")
 
     # ---------- TRAIN SVM ---------- #
     def train_svm(self, test_size=0.2, C=0.1):
-        print("\nExtracting HOG features...")
+        print("[INFO] Extracting HOG features...")
         X_pos = self.extract_features_from_samples(self.positive_samples)
         X_neg = self.extract_features_from_samples(self.negative_samples)
         y_pos = np.ones(len(X_pos))
@@ -214,7 +150,7 @@ class PersonDetectorTrainer:
         X = np.vstack([X_pos, X_neg])
         y = np.concatenate([y_pos, y_neg])
 
-        print(f"Training with {len(X)} samples...")
+        print(f"[INFO] Training with {len(X)} samples...")
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=42, stratify=y
         )
@@ -233,7 +169,7 @@ class PersonDetectorTrainer:
 
     def save_model(self, clf, output_path):
         joblib.dump({'classifier': clf}, output_path)
-        print(f"Model saved to: {output_path}")
+        print(f"[INFO] Model saved to: {output_path}")
 
 # ---------------- MAIN ---------------- #
 def main():
@@ -253,15 +189,14 @@ def main():
     if ADDITIONAL_NEGATIVES_DIR and os.path.exists(ADDITIONAL_NEGATIVES_DIR):
         trainer.load_negative_images_from_folder(ADDITIONAL_NEGATIVES_DIR)
 
-    print(f"\nTotal positives: {len(trainer.positive_samples)}, Total negatives: {len(trainer.negative_samples)}")
+    print(f"[INFO] Total positives: {len(trainer.positive_samples)}, Total negatives: {len(trainer.negative_samples)}")
     if len(trainer.positive_samples) < 5:
         print("[ERROR] Not enough positive samples, aborting.")
         return
 
     clf = trainer.train_svm(test_size=0.2, C=0.1)
     trainer.save_model(clf, OUTPUT_MODEL)
-    print("\nTraining complete!")
-
+    print("[INFO] Training complete!")
 
 if __name__ == "__main__":
     main()
