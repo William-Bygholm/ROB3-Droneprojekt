@@ -1,177 +1,128 @@
 import json
 import cv2
-import time
-from SVM_In_Action import detect_people, clf, hog
-from tqdm import tqdm  # progress bar
+import joblib
+from skimage.feature import hog
+import numpy as np
+from time import time
 
-IOU_THRESHOLD = 0.5
-FRAME_WIDTH = 640   # resize frame for faster detection
-FRAME_HEIGHT = 360
+# ============================================
+# CONFIG
+# ============================================
 
-VIDEOS = [
-    (r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned.MP4",
-     r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json"),
-    (r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
-     r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"),
+pairs = [
+    (
+        r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned.MP4",
+        r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json"
+    ),
+    (
+        r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
+        r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
+    )
 ]
 
-# ---------------- IoU ----------------
-def iou(boxA, boxB):
-    x1 = max(boxA[0], boxB[0])
-    y1 = max(boxA[1], boxB[1])
-    x2 = min(boxA[2], boxB[2])
-    y2 = min(boxA[3], boxB[3])
-    inter = max(0, x2 - x1) * max(0, y2 - y1)
-    areaA = (boxA[2]-boxA[0]) * (boxA[3]-boxA[1])
-    areaB = (boxB[2]-boxB[0]) * (boxB[3]-boxB[1])
-    union = areaA + areaB - inter
-    return inter / union if union > 0 else 0
+print("Loader model...")
+clf, winW, winH = joblib.load(r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\person_detector_trained.pkl")
+print("Model loaded:", (winW, winH))
 
-# ---------------- Load CVAT JSON ----------------
-def load_cvat_annotations(json_file):
-    try:
-        with open(json_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        print(f"Warning: could not read/parse JSON '{json_file}': {e}")
-        return {}
 
-    ann_by_frame = {}
+# ============================================
+# Helpers
+# ============================================
+def load_json(path):
+    with open(path, "r") as f:
+        return json.load(f)
 
-    if not data:
-        print(f"Warning: annotation file '{json_file}' is empty.")
-        return {}
 
-    # COCO format support
-    if isinstance(data, dict) and "images" in data and "annotations" in data:
-        # Map image_id to frame index (assume sorted by id)
-        image_id_to_frame = {}
-        for idx, img in enumerate(sorted(data["images"], key=lambda x: x["id"])):
-            image_id_to_frame[img["id"]] = idx
+def sliding_window(image, step, window_size):
+    for y in range(0, image.shape[0] - window_size[1], step):
+        for x in range(0, image.shape[1] - window_size[0], step):
+            yield (x, y, image[y:y + window_size[1], x:x + window_size[0]])
 
-        for ann in data["annotations"]:
-            image_id = ann.get("image_id")
-            bbox = ann.get("bbox")  # [x, y, width, height]
-            if image_id is None or bbox is None or len(bbox) != 4:
-                continue
-            x1, y1, w, h = bbox
-            x2, y2 = x1 + w, y1 + h
-            frame_idx = image_id_to_frame.get(image_id)
-            if frame_idx is None:
-                continue
-            box = [x1, y1, x2, y2]
-            ann_by_frame.setdefault(frame_idx, []).append(box)
-        return ann_by_frame
 
-    # ...existing code for CVAT and other formats...
-    # Case 1: CVAT-like 'shapes' list
-    if isinstance(data, dict) and "shapes" in data and isinstance(data["shapes"], list):
-        for shape in data["shapes"]:
-            frame_idx = shape.get("frame")
-            pts = shape.get("points")
-            if frame_idx is None or not pts or len(pts) < 2:
-                continue
-            x1, y1 = pts[0]
-            x2, y2 = pts[1]
-            box = [x1, y1, x2, y2]
-            ann_by_frame.setdefault(frame_idx, []).append(box)
-        return ann_by_frame
+def extract_hog(img):
+    return hog(img,
+               orientations=9,
+               pixels_per_cell=(8, 8),
+               cells_per_block=(2, 2),
+               block_norm='L2-Hys',
+               transform_sqrt=True)
 
-    if isinstance(data, list):
-        for shape in data:
-            frame_idx = shape.get("frame")
-            pts = shape.get("points")
-            if frame_idx is None or not pts or len(pts) < 2:
-                continue
-            x1, y1 = pts[0]
-            x2, y2 = pts[1]
-            box = [x1, y1, x2, y2]
-            ann_by_frame.setdefault(frame_idx, []).append(box)
-        return ann_by_frame
 
-    if isinstance(data, dict) and "annotations" in data and isinstance(data["annotations"], list):
-        for shape in data["annotations"]:
-            frame_idx = shape.get("frame")
-            pts = shape.get("points") or shape.get("bbox")
-            if frame_idx is None or not pts:
-                continue
-            if isinstance(pts[0], list) and len(pts) >= 2:
-                x1, y1 = pts[0]
-                x2, y2 = pts[1]
-            else:
-                x1, y1, x2, y2 = pts[:4]
-            box = [x1, y1, x2, y2]
-            ann_by_frame.setdefault(frame_idx, []).append(box)
-        return ann_by_frame
+# ============================================
+# MAIN: Loop igennem video + json par
+# ============================================
+for (video_path, json_path) in pairs:
 
-    print(f"Warning: unknown annotation format in '{json_file}'. Expected COCO, CVAT, or a list of annotations.")
-    return {}
+    print("\n=== Evaluating:", video_path, "===")
+    annotations = load_json(json_path)
 
-# ---------------- Evaluation ----------------
-TP = 0
-FP = 0
-FN = 0
-
-for video_path, json_path in VIDEOS:
-    print(f"\n=== Evaluating: {video_path} ===")
-    gt = load_cvat_annotations(json_path)
-    annotated_frames = set(gt.keys())
-    print(f"Frames with ground truth annotations: {len(annotated_frames)}")
+    # OPTIONAL: find alle ground truth bokse pr. frame (det er let i COCO)
+    gt_by_frame = {}
+    if "annotations" in annotations:
+        for ann in annotations["annotations"]:
+            fid = ann["image_id"]
+            if fid not in gt_by_frame:
+                gt_by_frame[fid] = []
+            gt_by_frame[fid].append(ann["bbox"])
+    # hvis din version ikke har annotations, så er GT tom → no problem
 
     cap = cv2.VideoCapture(video_path)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    start_time = time.time()
+    if not cap.isOpened():
+        print("Kan ikke åbne video:", video_path)
+        continue
 
+    frame_idx = 0
+    stride = 16
+    scale_factor = 1.20
 
-    for frame_idx in tqdm(range(total_frames), desc="Frames", unit="frame"):
+    while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # --- resize for faster detection ---
-        frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
+        start_t = time()
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        if frame_idx in annotated_frames:
-            pred_boxes = detect_people(frame, clf, hog)
-            gt_boxes = gt.get(frame_idx, [])
+        detections = []
+        scaled = gray.copy()
+        scale = 1.0
 
-            matched_gt = set()
-            for pb in pred_boxes:
-                best_iou = 0
-                best_gt_idx = -1
-                for idx, gb in enumerate(gt_boxes):
-                    val = iou(pb, gb)
-                    if val > best_iou:
-                        best_iou = val
-                        best_gt_idx = idx
+        while scaled.shape[0] >= winH and scaled.shape[1] >= winW:
+            for (x, y, window) in sliding_window(scaled, stride, (winW, winH)):
+                hog_feat = extract_hog(window)
+                pred = clf.predict([hog_feat])[0]
 
-                if best_iou >= IOU_THRESHOLD:
-                    TP += 1
-                    matched_gt.add(best_gt_idx)
-                else:
-                    FP += 1  # FP i annoteret frame
+                if pred == 1:
+                    rx = int(x * (1/scale))
+                    ry = int(y * (1/scale))
+                    rw = int(winW * (1/scale))
+                    rh = int(winH * (1/scale))
+                    detections.append((rx, ry, rw, rh))
 
-            FN += len(gt_boxes) - len(matched_gt)
-        else:
-            # --- FP på frames uden annotationer ---
-            pred_boxes = detect_people(frame, clf, hog)
-            FP += len(pred_boxes)
+            scale *= scale_factor
+            newW = int(gray.shape[1] / scale)
+            newH = int(gray.shape[0] / scale)
+            scaled = cv2.resize(gray, (newW, newH))
 
-        # ETA
-        elapsed = time.time() - start_time
-        pct_done = (frame_idx + 1) / total_frames * 100
-        eta = elapsed / (frame_idx + 1) * (total_frames - frame_idx - 1)
-        tqdm.write(f"Progress: {pct_done:.2f}% | ETA: {eta:.1f}s | TP: {TP} | FP: {FP} | FN: {FN} | Frame: {frame_idx+1}/{total_frames}", end="\r")
+        # tegn detection
+        for (x, y, w, h) in detections:
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+
+        # tegn ground truth hvis du vil
+        if frame_idx in gt_by_frame:
+            for bbox in gt_by_frame[frame_idx]:
+                gx, gy, gw, gh = map(int, bbox)
+                cv2.rectangle(frame, (gx, gy), (gx + gw, gy + gh), (0, 255, 0), 2)
+
+        fps = 1.0 / (time() - start_t)
+        print(f"Frame {frame_idx}: {fps:.2f} FPS")
+
+        cv2.imshow("Detection", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+        frame_idx += 1
 
     cap.release()
-    print(f"\nVideo finished. TP: {TP}, FP: {FP}, FN: {FN}")
 
-# ---------------- Results ----------------
-precision = TP / (TP + FP + 1e-9)
-recall = TP / (TP + FN + 1e-9)
-
-print("\n======= FINAL RESULTS =======")
-print(f"TP: {TP}, FP: {FP}, FN: {FN}")
-print(f"Precision: {precision:.4f}")
-print(f"Recall: {recall:.4f}")
-print("=============================")
+cv2.destroyAllWindows()
