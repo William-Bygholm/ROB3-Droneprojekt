@@ -5,6 +5,7 @@ import json
 import time
 from sklearn.metrics import roc_curve, precision_recall_curve, auc
 import matplotlib.pyplot as plt
+import os
 
 # ---------------- USER INPUT ----------------
 # Multiple video/JSON pairs for testing
