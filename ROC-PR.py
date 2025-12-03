@@ -53,7 +53,6 @@ def safe_read_frame(cap):
         return False, None
     h, w = frame.shape[:2]
     if h <= 0 or w <= 0 or h > 8000 or w > 8000:
-        # guard against bogus dimensions
         return False, None
     return True, frame
 
