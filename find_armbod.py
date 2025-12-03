@@ -154,7 +154,7 @@ def crop_image(img):
         img = img[start_row:end_row, :]
 
     # --- horizontal crop: remove 5% from each side (margin) ---
-    WIDTH_REMOVE_RATIO = 0.05  # remove 5% from left and 5% from right
+    WIDTH_REMOVE_RATIO = 0.15  # remove 5% from left and 5% from right
     w = img.shape[1]
     left = int(w * WIDTH_REMOVE_RATIO)
     right = int(w * (1.0 - WIDTH_REMOVE_RATIO))
