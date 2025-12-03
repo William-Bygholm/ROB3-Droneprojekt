@@ -16,7 +16,7 @@ import seaborn as sns
 TEST_DATA = [
     {
         'video': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4",
-        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\2 mili med blå bond.json"
+        'json': r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
     }
 ]
 
