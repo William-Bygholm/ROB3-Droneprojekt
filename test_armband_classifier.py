@@ -359,10 +359,6 @@ def main():
     print("ARMBAND CLASSIFIER EVALUATION")
     print("="*60)
     
-    # Ask user if they want to display debug visualization
-    print("\nDisplay blob analysis visualization? (y/n): ", end='')
-    display_debug = input().strip().lower() == 'y'
-    
     # Collect predictions from all videos
     all_predictions = []
     
