@@ -128,6 +128,16 @@ def classify_target(red_boxes, blue_boxes):
         else:
             return "Bad soldier (area-based)", "bad", False
     
+    if num_red == 2 and num_blue == 2:
+        # Compare largest areas
+        red_area = max(box[4] for box in red_boxes)
+        blue_area = max(box[4] for box in blue_boxes)
+        
+        if blue_area > red_area:
+            return "Good soldier (HVT area-based)", "good", True
+        else:
+            return "Bad soldier (HVT area-based)", "bad", True
+    
     # Fallback for any other combinations
     return "Uncertain classification", None, False
 
