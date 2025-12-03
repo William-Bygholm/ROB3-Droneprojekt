@@ -25,7 +25,7 @@ TRAINING_DATA = [
 ]
 
 ADDITIONAL_POSITIVES_DIR = r"C:\Users\alexa\Desktop\Pos"  # Set to None to skip
-ADDITIONAL_NEGATIVES_DIR = r"C:\Users\alexa\Desktop\Neg"# Set to None to skip
+ADDITIONAL_NEGATIVES_DIR = r"C:\Users\alexa\Desktop\Neg"  # Set to None to skip
 
 OUTPUT_MODEL = "Person_Detector_Json+YOLO.pkl"
 WINDOW_SIZE = (128, 256)
@@ -48,16 +48,13 @@ class PersonDetectorTrainer:
     # ---------- CLEAR FUNCTIONS ---------- #
     def clear_positive_samples(self):
         self.positive_samples = []
-        print("All positive samples cleared.")
 
     def clear_negative_samples(self):
         self.negative_samples = []
-        print("All negative samples cleared.")
 
     def clear_all_samples(self):
         self.positive_samples = []
         self.negative_samples = []
-        print("All positive AND negative samples cleared.")
 
     # ---------- LOAD ANNOTATIONS ---------- #
     def load_annotations(self, json_path):
@@ -179,7 +176,6 @@ class PersonDetectorTrainer:
         while True:
             ret, frame = cap.read()
             if not ret or frame is None:
-                print(f"[WARNING] Could not read frame {frame_idx}, skipping...")
                 frame_idx += 1
                 if frame_idx >= total_frames:
                     break
@@ -239,7 +235,6 @@ class PersonDetectorTrainer:
         joblib.dump({'classifier': clf}, output_path)
         print(f"Model saved to: {output_path}")
 
-
 # ---------------- MAIN ---------------- #
 def main():
     trainer = PersonDetectorTrainer(window_size=WINDOW_SIZE)
@@ -253,9 +248,9 @@ def main():
         frame_annotations, _ = trainer.load_annotations(json_path)
         trainer.collect_training_data(video_path, frame_annotations)
 
-    if ADDITIONAL_POSITIVES_DIR:
+    if ADDITIONAL_POSITIVES_DIR and os.path.exists(ADDITIONAL_POSITIVES_DIR):
         trainer.load_positive_images_from_folder(ADDITIONAL_POSITIVES_DIR)
-    if ADDITIONAL_NEGATIVES_DIR:
+    if ADDITIONAL_NEGATIVES_DIR and os.path.exists(ADDITIONAL_NEGATIVES_DIR):
         trainer.load_negative_images_from_folder(ADDITIONAL_NEGATIVES_DIR)
 
     print(f"\nTotal positives: {len(trainer.positive_samples)}, Total negatives: {len(trainer.negative_samples)}")
