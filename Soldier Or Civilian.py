@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import os
 
-def compute_histogram(img, center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
+def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
     Help-function to compute a normalized HSV histogram for the upper part (breast region) of an image.
     This is used both for reference histograms creation and for classification.
@@ -47,7 +47,7 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def show_crop_overlay(img, center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
+def show_crop_overlay(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
     A function only to test and visualize the cropping area used in compute_histogram.
     """
