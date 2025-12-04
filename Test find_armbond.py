@@ -206,44 +206,44 @@ def process_person_roi(roi, person_idx):
     # Crop to upper body area
     #cropped = crop_top_of_roi(roi)
     
-    LAB = cv2.cvtColor(roi, cv2.COLOR_BGR2LAB)
+    #LAB = cv2.cvtColor(roi, cv2.COLOR_BGR2LAB)
     # Adaptive blur based on ROI size - larger ROIs need more blur
-    #h, w = LAB.shape[:2] #cropped.shape[:2]
-    #roi_area = h * w
+    h, w = roi.shape[:2] #cropped.shape[:2]
+    roi_area = h * w
     
     # Scale kernel size based on area (min 5x5, increase for larger ROIs)
-    #if roi_area < 10000:  # Small ROI
-    #    kernel_size = 5
-    #elif roi_area < 20000:  # Medium ROI
-    #    kernel_size = 7
-    #elif roi_area < 300000:  # Large ROI
-    #    kernel_size = 9
-    #else:  # Very large ROI
-    #    kernel_size = 11
+    if roi_area < 10000:  # Small ROI
+        kernel_size = 5
+    elif roi_area < 20000:  # Medium ROI
+        kernel_size = 7
+    elif roi_area < 300000:  # Large ROI
+        kernel_size = 9
+    else:  # Very large ROI
+        kernel_size = 11
     
     # Ensure kernel size is odd
-    #if kernel_size % 2 == 0:
-    #    kernel_size += 1
+    if kernel_size % 2 == 0:
+        kernel_size += 1
     
-    #blurred = cv2.GaussianBlur(LAB, (kernel_size, kernel_size), 0)
+    blurred = cv2.GaussianBlur(roi, (kernel_size, kernel_size), 0)
 
-    #if roi_area > 5000:
-    #    edge = edge_detection(blurred)
-    #    cv2.imshow("Edges", edge)
+    if roi_area > 5000:
+        edge = edge_detection(blurred)
+        cv2.imshow("Edges", edge)
 
-    #annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
-    #    blurred, 
-    #    morph_kernel=(3,3), 
-    #    morph_iters=1,
-    #    min_pixels=10,
-    #    rel_area_multiplier=0.002,
-    #    max_components=2
-    #)
+    annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
+        blurred, 
+        morph_kernel=(3,3), 
+        morph_iters=1,
+        min_pixels=10,
+        rel_area_multiplier=0.002,
+        max_components=2
+    )
     
     # Classify the target based on detected boxes
-    #classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
+    classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
     
-    return LAB #annotated, classification, target_type, is_hvt, len(red_boxes), len(blue_boxes)
+    return annotated, classification, target_type, is_hvt, len(red_boxes), len(blue_boxes)
 
 def process_frame_with_boxes(img, frame_number, annotations):
     """Process a frame with given bounding boxes, analyzing each person separately."""
