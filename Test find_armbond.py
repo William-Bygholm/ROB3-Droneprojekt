@@ -196,7 +196,7 @@ def edge_detection(img):
     gradient_magnitude = cv2.magnitude(sobelx, sobely)
 
     gradient_magnitude = cv2.convertScaleAbs(gradient_magnitude)
-    
+
     return gradient_magnitude
 
 
@@ -226,8 +226,9 @@ def process_person_roi(roi, person_idx):
     
     blurred = cv2.GaussianBlur(cropped, (kernel_size, kernel_size), 0)
 
-    edge = edge_detection(blurred)
-    cv2.imshow("Edges", edge)
+    if roi_area > 5000:
+        edge = edge_detection(blurred)
+        cv2.imshow("Edges", edge)
 
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
         blurred, 
