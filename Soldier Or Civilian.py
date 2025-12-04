@@ -74,7 +74,7 @@ def show_crop_overlay(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.8):
+def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.5):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """

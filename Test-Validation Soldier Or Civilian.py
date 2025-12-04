@@ -57,7 +57,7 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.8):
+def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.5):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """
@@ -247,7 +247,7 @@ def collect_scores(video_path, frame_annotations, reference_histograms, id_offse
             gt_label = get_ground_truth_label(ann)
             ground_truth_labels.append(gt_label)
 
-            pred_label, match_score = classify_person(roi, reference_histograms)
+            pred_label, match_score = classify_person(roi, reference_histograms, threshold_score=THRESHOLD_SCORE)
             match_scores.append(match_score)
 
             if "Military" in pred_label or "HVT" in pred_label:
