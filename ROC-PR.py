@@ -192,6 +192,10 @@ while True:
 
 cap.release()
 print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections.")
+print(f"[DEBUG] Scores shape: {len(scores_all)}, Labels shape: {len(labels_all)}")
+print(f"[DEBUG] Positive labels (TP+FN): {np.sum(np.array(labels_all) == 1)}")
+print(f"[DEBUG] Negative labels (TN+FP): {np.sum(np.array(labels_all) == 0)}")
+print(f"[DEBUG] Min score: {min(scores_all)}, Max score: {max(scores_all)}")
 
 # ---------------- METRICS ----------------
 scores = np.array(scores_all, dtype=np.float32)
