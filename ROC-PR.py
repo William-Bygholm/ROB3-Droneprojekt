@@ -9,14 +9,14 @@ from sklearn.metrics import roc_curve, precision_recall_curve, auc, f1_score
 # ---------------- USER CONFIG ----------------
 VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
 JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
-MODEL_FILE = "Person_Detector_Json.pkl"
+MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
 SCALES = [1.0, 0.8, 0.64]
 STEP_SIZES = {1.0: 48, 0.8: 36, 0.64: 24}
 NMS_THRESHOLD = 0.05
 FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
-IOU_POSITIVE = 0.3
+IOU_POSITIVE = 0.5
 
 # ---------------- LOAD MODEL ----------------
 print("Loading model...")
