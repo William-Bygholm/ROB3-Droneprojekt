@@ -8,13 +8,13 @@ from sklearn.metrics import roc_curve, precision_recall_curve, auc, f1_score
 
 # ---------------- USER CONFIG ----------------
 VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
-JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bånd.json"
+JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
 MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
 # Flere scales og mindre step sizes
-SCALES = [1.0, 0.8, 0.64, 0.5]
-STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24, 0.5: 20}
-NMS_THRESHOLD = 0.3   # mindre aggressiv
+SCALES = [1.0, 0.8, 0.64]
+STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
+NMS_THRESHOLD = 0.05   # mindre aggressiv
 FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
