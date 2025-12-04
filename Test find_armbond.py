@@ -187,8 +187,8 @@ def crop_top_of_roi(roi):
     roi = roi[:, left:right]
     return roi
 
-def edge_detection(roi):
-    edges = cv2.Canny(roi, 100, 200)
+def edge_detection(img):
+    edges = cv2.Canny(img, 100, 200)
     return edges
 
 
@@ -216,7 +216,10 @@ def process_person_roi(roi, person_idx):
     if kernel_size % 2 == 0:
         kernel_size += 1
     
-    blurred = cv2.medianBlur(cropped, kernel_size)
+    blurred = cv2.GaussianBlur(cropped, (kernel_size, kernel_size), 0)
+
+    edge = edge_detection(blurred)
+    cv2.imshow("Edges", edge)
 
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
         blurred, 
@@ -360,66 +363,4 @@ if __name__ == "__main__":
     COCO_JSON = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
     
     video_path = get_video_path(video_file)
-    # Quick demo: run edge detection on the first annotated ROI and display
-    try:
-        frame_annotations, image_info = load_coco_annotations(COCO_JSON)
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise RuntimeError(f"Could not open video: {video_path}")
-
-        frame_idx = 0
-        roi_shown = False
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("Reached end of video without finding annotated frame.")
-                break
-
-            # Try same mapping strategy as overlay_coco_annotations.py
-            matching_annotations = []
-            for possible_id in [frame_idx, frame_idx + 1, 3720 + frame_idx]:
-                if possible_id in frame_annotations:
-                    matching_annotations = frame_annotations[possible_id]
-                    break
-
-            if matching_annotations:
-                # Take the first annotation's bbox
-                ann = matching_annotations[0]
-                x, y, w, h = [int(v) for v in ann['bbox']]
-                roi = frame[y:y+h, x:x+w]
-                if roi.size == 0:
-                    print("Found annotation but ROI was empty; continuing...")
-                    frame_idx += 1
-                    continue
-
-                # Optional: focus on upper body area
-                #roi_cropped = crop_top_of_roi(roi)
-                # Compute edges
-                edges = edge_detection(roi)
-
-                # Show original ROI and edges side by side
-                disp_roi = roi if roi.ndim == 3 else cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
-                disp_edges = edges if edges.ndim == 2 else cv2.cvtColor(edges, cv2.COLOR_BGR2GRAY)
-                disp_edges_bgr = cv2.cvtColor(disp_edges, cv2.COLOR_GRAY2BGR)
-                combined = np.hstack([disp_roi, disp_edges_bgr])
-
-                win_name = "ROI (left) and Edge Detection (right)"
-                cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-                cv2.imshow(win_name, combined)
-                print(f"Showing edges for frame {frame_idx}, bbox=({x},{y},{w},{h}). Press any key to close.")
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
-                roi_shown = True
-                break
-
-            frame_idx += 1
-
-        cap.release()
-        if not roi_shown:
-            print("No annotated ROI was displayed. Check JSON mappings/offset.")
-    except Exception as e:
-        print(f"Edge detection demo failed: {e}")
-        import traceback
-        traceback.print_exc()
-
-
+    show_video(video_path, COCO_JSON)
