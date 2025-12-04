@@ -14,7 +14,7 @@ MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 # Flere scales og mindre step sizes
 SCALES = [1.0, 0.8, 0.64]
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
-NMS_THRESHOLD = 0.3   # mindre aggressiv
+NMS_THRESHOLD = 0.05   # mindre aggressiv
 FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
