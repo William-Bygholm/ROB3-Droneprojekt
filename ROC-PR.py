@@ -11,8 +11,8 @@ VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 
 JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
 MODEL_FILE = "Person_Detector_Json.pkl"
 
-SCALES = [1.0, 0.8]
-STEP_SIZES = {1.0: 48, 0.8: 36}
+SCALES = [1.0, 0.8, 0.64]
+STEP_SIZES = {1.0: 48, 0.8: 36, 0.64: 24}
 NMS_THRESHOLD = 0.05
 FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
