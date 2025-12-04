@@ -174,10 +174,15 @@ while True:
             matched_gt_indices.add(matched_idx)
     
     # Add unmatched ground truth boxes as FN
+    unmatched_count = 0
     for gt_idx, g in enumerate(gt_boxes_scaled):
         if gt_idx not in matched_gt_indices:
             scores_all.append(-1e6)  # Undetected → extremely low score (will always be below threshold)
             labels_all.append(1)  # But it's a positive (FN)
+            unmatched_count += 1
+    
+    if frame_id % (FRAME_SKIP * 5) == 0 and len(gt_boxes_scaled) > 0:
+        print(f"\n[DEBUG] Frame {frame_id}: GT={len(gt_boxes_scaled)}, Detections={len(final_boxes)}, Matched={len(matched_gt_indices)}, Unmatched FN added={unmatched_count}")
 
     # Progress
     elapsed = time.time() - start_time
