@@ -15,7 +15,7 @@ SCALES = [1.0, 0.8, 0.64]
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
 NMS_THRESHOLD = 0.05
 FRAME_SKIP = 2
-WINDOW_SIZE = (64, 128)
+WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
 
 # ---------------- LOAD MODEL ----------------
