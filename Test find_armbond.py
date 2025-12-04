@@ -187,8 +187,8 @@ def crop_top_of_roi(roi):
     roi = roi[:, left:right]
     return roi
 
-def edge_detection(roi):
-    edges = cv2.Canny(roi, 100, 200)
+def edge_detection(img):
+    edges = cv2.Canny(img, 100, 200)
     return edges
 
 
@@ -219,7 +219,7 @@ def process_person_roi(roi, person_idx):
     blurred = cv2.GaussianBlur(cropped, (kernel_size, kernel_size), 0)
 
     edge = edge_detection(blurred)
-    cv2.imshow(f"Person {person_idx} - Edges", edge)
+    cv2.imshow("Edges", edge)
 
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
         blurred, 
