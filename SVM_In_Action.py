@@ -3,7 +3,7 @@ import cv2
 import joblib
 import numpy as np
 
-VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\HVT blå bånd.MP4"
+VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
 MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
 SCALES = [1.0, 0.8, 0.64, 0.5, 0.4]  # Tilføjer 0.5 og 0.4 skalaer
