@@ -134,6 +134,10 @@ while True:
     scale_y = h0 / coco_h
     gt_boxes = frame_to_boxes.get(frame_id, [])
     gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)] for x1,y1,x2,y2 in gt_boxes]
+    
+    # Debug: print GT info every N frames
+    if frame_id % (FRAME_SKIP * 10) == 0:
+        print(f"\n[DEBUG] Frame {frame_id}: GT boxes loaded = {len(gt_boxes_scaled)}")
 
     detections, scores = [], []
     for scale in SCALES:
