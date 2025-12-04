@@ -218,6 +218,9 @@ def process_person_roi(roi, person_idx):
     
     blurred = cv2.GaussianBlur(cropped, (kernel_size, kernel_size), 0)
 
+    edge = edge_detection(blurred)
+    cv2.imshow(f"Person {person_idx} - Edges", edge)
+
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
         blurred, 
         morph_kernel=(3,3), 
