@@ -5,6 +5,10 @@ import json
 from sklearn.metrics import confusion_matrix, classification_report, precision_recall_curve
 from matplotlib import pyplot as plt
 
+VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
+COCO_JSON = "Validation/2 mili med blå bond.json"
+THRESHOLD_SCORE = 0.8
+
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
     Help-function to compute a normalized HSV histogram for the upper part (breast region) of an image.
@@ -292,8 +296,4 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
 
 
 # Main
-VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
-COCO_JSON = "Validation/2 mili med blå bond.json"
-THRESHOLD_SCORE = 0.8
-
 evaluate_classify_person(VIDEO_PATH, COCO_JSON, reference_path="Reference templates")
