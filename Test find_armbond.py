@@ -360,15 +360,25 @@ if __name__ == "__main__":
     COCO_JSON = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
     
     video_path = get_video_path(video_file)
-    # Quick demo: run edge detection on the first annotated ROI and display
+    # Quick demo: run edge detection on all annotated people in a selected frame
     try:
         frame_annotations, image_info = load_coco_annotations(COCO_JSON)
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open video: {video_path}")
 
-        frame_idx = 0
-        roi_shown = False
+        # Ask user which frame to analyze
+        try:
+            frame_input = input("Enter frame number to analyze (or press Enter to find first annotated frame): ").strip()
+            if frame_input:
+                frame_idx = int(frame_input)
+            else:
+                frame_idx = 0
+        except ValueError:
+            print("Invalid input, starting from frame 0")
+            frame_idx = 0
+        
+        annotated_frame_found = False
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -383,40 +393,43 @@ if __name__ == "__main__":
                     break
 
             if matching_annotations:
-                # Take the first annotation's bbox
-                ann = matching_annotations[0]
-                x, y, w, h = [int(v) for v in ann['bbox']]
-                roi = frame[y:y+h, x:x+w]
-                if roi.size == 0:
-                    print("Found annotation but ROI was empty; continuing...")
-                    frame_idx += 1
-                    continue
+                print(f"\nFound {len(matching_annotations)} annotated person(s) in frame {frame_idx}")
+                
+                # Loop through all annotated people
+                for person_idx, ann in enumerate(matching_annotations, 1):
+                    x, y, w, h = [int(v) for v in ann['bbox']]
+                    roi = frame[y:y+h, x:x+w]
+                    
+                    if roi.size == 0:
+                        print(f"  Person {person_idx}: ROI was empty; skipping.")
+                        continue
 
-                # Optional: focus on upper body area
-                #roi_cropped = crop_top_of_roi(roi)
-                # Compute edges
-                edges = edge_detection(roi)
+                    # Crop to upper body area
+                    roi_cropped = crop_top_of_roi(roi)
+                    # Compute edges
+                    edges = edge_detection(roi_cropped)
 
-                # Show original ROI and edges side by side
-                disp_roi = roi if roi.ndim == 3 else cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
-                disp_edges = edges if edges.ndim == 2 else cv2.cvtColor(edges, cv2.COLOR_BGR2GRAY)
-                disp_edges_bgr = cv2.cvtColor(disp_edges, cv2.COLOR_GRAY2BGR)
-                combined = np.hstack([disp_roi, disp_edges_bgr])
+                    # Show original ROI and edges side by side
+                    disp_roi = roi_cropped if roi_cropped.ndim == 3 else cv2.cvtColor(roi_cropped, cv2.COLOR_GRAY2BGR)
+                    disp_edges = edges if edges.ndim == 2 else cv2.cvtColor(edges, cv2.COLOR_BGR2GRAY)
+                    disp_edges_bgr = cv2.cvtColor(disp_edges, cv2.COLOR_GRAY2BGR)
+                    combined = np.hstack([disp_roi, disp_edges_bgr])
 
-                win_name = "ROI (left) and Edge Detection (right)"
-                cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-                cv2.imshow(win_name, combined)
-                print(f"Showing edges for frame {frame_idx}, bbox=({x},{y},{w},{h}). Press any key to close.")
-                cv2.waitKey(0)
+                    win_name = f"Person {person_idx} - ROI (left) and Edge Detection (right)"
+                    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+                    cv2.imshow(win_name, combined)
+                    print(f"  Person {person_idx}: Showing edges, bbox=({x},{y},{w},{h}). Press any key to go to next person.")
+                    cv2.waitKey(0)
+                
                 cv2.destroyAllWindows()
-                roi_shown = True
+                annotated_frame_found = True
                 break
 
             frame_idx += 1
 
         cap.release()
-        if not roi_shown:
-            print("No annotated ROI was displayed. Check JSON mappings/offset.")
+        if not annotated_frame_found:
+            print("No annotated frame was found. Check JSON mappings/offset.")
     except Exception as e:
         print(f"Edge detection demo failed: {e}")
         import traceback
