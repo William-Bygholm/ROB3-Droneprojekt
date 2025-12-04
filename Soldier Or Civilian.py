@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+import matplotlib.pyplot as plt
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -23,13 +24,19 @@ def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio
     if cropped.size == 0:
         raise ValueError("Cropped region has zero size. Check the cropping parameters.")
     
-    # hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
-    # hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
-    # hist = cv2.normalize(hist, hist).astype("float32")
     lab = cv2.cvtColor(cropped, cv2.COLOR_BGR2Lab)
     hist = cv2.calcHist([lab], [1, 2], None, [50, 60], [0, 256, 0, 256])
     hist = cv2.normalize(hist, hist).astype("float32")
     return hist
+
+def plot_lab_histogram(hist):
+    plt.figure()
+    plt.imshow(hist, interpolation='nearest', origin='lower', extent=[0, 256, 0, 256], aspect='auto', cmap='viridis')
+    plt.title("Lab a/b histogram")
+    plt.xlabel("a (Green-Red)")
+    plt.ylabel("b (Blue-Yellow)")
+    plt.colorbar()
+    plt.show()
 
 def load_reference_histograms(base_dir):
     """
@@ -103,3 +110,5 @@ roi = cv2.imread('Billeder/Military close range.png')
 reference_histograms = load_reference_histograms("Reference templates")
 classification = classify_person(roi, reference_histograms)
 show_crop_overlay(roi)
+hist = compute_histogram(roi)
+plot_lab_histogram(hist)
