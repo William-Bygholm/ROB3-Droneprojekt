@@ -188,8 +188,16 @@ def crop_top_of_roi(roi):
     return roi
 
 def edge_detection(img):
-    edges = cv2.Canny(img, 100, 200)
-    return edges
+    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    sobelx = cv2.Sobel(img_gray, cv2.CV_64F, 1, 0, ksize=3)
+    sobely = cv2.Sobel(img_gray, cv2.CV_64F, 0, 1, ksize=3)
+
+    gradient_magnitude = cv2.magnitude(sobelx, sobely)
+
+    gradient_magnitude = cv2.convertScaleAbs(gradient_magnitude)
+    
+    return gradient_magnitude
 
 
 def process_person_roi(roi, person_idx):
