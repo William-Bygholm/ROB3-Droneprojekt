@@ -102,14 +102,24 @@ def iou(a, b):
 with open(JSON_COCO, "r") as f:
     coco = json.load(f)
 
-image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
+print(f"[DEBUG] Loaded JSON. Images: {len(coco.get('images', []))}, Annotations: {len(coco.get('annotations', []))}")
+
+# Map COCO image_id to frame index (0-based in JSON, but frames in video start at 1)
+image_id_to_frame = {img["id"]: idx for idx, img in enumerate(coco["images"])}
 frame_to_boxes = {}
 for ann in coco["annotations"]:
-    frame_id = image_id_to_frame.get(ann["image_id"])
-    if frame_id is None:
+    image_id = ann["image_id"]
+    frame_idx = image_id_to_frame.get(image_id)
+    if frame_idx is None:
         continue
+    # Convert to 1-based frame number for consistency with video capture
+    frame_id = frame_idx + 1
     x, y, w, h = ann["bbox"]
     frame_to_boxes.setdefault(frame_id, []).append([int(x), int(y), int(x+w), int(y+h)])
+
+print(f"[DEBUG] Frames with annotations: {len(frame_to_boxes)}")
+if frame_to_boxes:
+    print(f"[DEBUG] Frame ID range: {min(frame_to_boxes.keys())} - {max(frame_to_boxes.keys())}")
 coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
 
 # ---------------- VALIDATION LOOP ----------------
