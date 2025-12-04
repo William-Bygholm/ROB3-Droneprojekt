@@ -224,7 +224,7 @@ def process_person_roi(roi, person_idx):
     if kernel_size % 2 == 0:
         kernel_size += 1
     
-    blurred = cv2.GaussianBlur(cropped, (kernel_size, kernel_size), 0)
+    blurred = cv2.GaussianBlur(roi, (kernel_size, kernel_size), 0)
 
     if roi_area > 5000:
         edge = edge_detection(blurred)
