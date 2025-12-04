@@ -15,7 +15,7 @@ MODEL_FILE = "Person_Detector_Json.pkl"
 SCALES = [1.0, 0.8, 0.64]   # flere scales
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
 NMS_THRESHOLD = 0.05  # justeret NMS
-FRAME_SKIP = 2
+FRAME_SKIP = 50
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
 
@@ -134,6 +134,10 @@ while True:
     scale_y = h0 / coco_h
     gt_boxes = frame_to_boxes.get(frame_id, [])
     gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)] for x1,y1,x2,y2 in gt_boxes]
+    
+    # Debug: print GT info every N frames
+    if frame_id % (FRAME_SKIP * 10) == 0:
+        print(f"\n[DEBUG] Frame {frame_id}: GT boxes loaded = {len(gt_boxes_scaled)}")
 
     detections, scores = [], []
     for scale in SCALES:
@@ -174,10 +178,15 @@ while True:
             matched_gt_indices.add(matched_idx)
     
     # Add unmatched ground truth boxes as FN
+    unmatched_count = 0
     for gt_idx, g in enumerate(gt_boxes_scaled):
         if gt_idx not in matched_gt_indices:
-            scores_all.append(-1.0)  # Undetected → very low score
+            scores_all.append(-1e6)  # Undetected → extremely low score (will always be below threshold)
             labels_all.append(1)  # But it's a positive (FN)
+            unmatched_count += 1
+    
+    if frame_id % (FRAME_SKIP * 5) == 0 and len(gt_boxes_scaled) > 0:
+        print(f"\n[DEBUG] Frame {frame_id}: GT={len(gt_boxes_scaled)}, Detections={len(final_boxes)}, Matched={len(matched_gt_indices)}, Unmatched FN added={unmatched_count}")
 
     # Progress
     elapsed = time.time() - start_time
@@ -192,6 +201,10 @@ while True:
 
 cap.release()
 print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections.")
+print(f"[DEBUG] Scores shape: {len(scores_all)}, Labels shape: {len(labels_all)}")
+print(f"[DEBUG] Positive labels (TP+FN): {np.sum(np.array(labels_all) == 1)}")
+print(f"[DEBUG] Negative labels (TN+FP): {np.sum(np.array(labels_all) == 0)}")
+print(f"[DEBUG] Min score: {min(scores_all)}, Max score: {max(scores_all)}")
 
 # ---------------- METRICS ----------------
 scores = np.array(scores_all, dtype=np.float32)
