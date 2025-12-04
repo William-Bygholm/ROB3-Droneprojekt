@@ -99,7 +99,7 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
         print(f"Classification: Civilian")
         return "Civilian", match_score
 
-roi = cv2.imread('Billeder/Military long range 2.png')
+roi = cv2.imread('Billeder/Military close range.png')
 reference_histograms = load_reference_histograms("Reference templates")
 classification = classify_person(roi, reference_histograms)
 show_crop_overlay(roi)
