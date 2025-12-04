@@ -299,6 +299,7 @@ def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Referenc
     Evaluates  the classifier algorithm on multiple videos combined.
     Returns one combined confusion matrix, one classification report, and one precision-recall plot.
     """
+    # Load reference histograms
     reference_histograms = load_reference_histograms(reference_path)
 
     all_ground_truth, all_match_scores, all_predicted = [], [], []
