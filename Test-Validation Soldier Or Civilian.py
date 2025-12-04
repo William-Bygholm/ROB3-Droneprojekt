@@ -296,4 +296,4 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
 
 
 # Main
-evaluate_classify_person(VIDEO_PATH, COCO_JSON, reference_path="Reference templates")
+evaluate_classify_person(VIDEO_PATH, COCO_JSON)
