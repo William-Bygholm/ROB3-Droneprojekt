@@ -216,7 +216,7 @@ def process_person_roi(roi, person_idx):
     if kernel_size % 2 == 0:
         kernel_size += 1
     
-    blurred = cv2.medianBlur(cropped, kernel_size)
+    blurred = cv2.GaussianBlur(cropped, (kernel_size, kernel_size), 0)
 
     annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
         blurred, 
