@@ -11,9 +11,10 @@ VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 
 JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
 MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
+# Flere scales og mindre step sizes
 SCALES = [1.0, 0.8, 0.64]
-STEP_SIZES = {1.0: 48, 0.8: 36, 0.64: 24}
-NMS_THRESHOLD = 0.05
+STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
+NMS_THRESHOLD = 0.05   # mindre aggressiv
 FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
@@ -56,40 +57,6 @@ def nms_opencv(detections, scores, score_thresh, nms_thresh):
         return [], []
     indices = indices.flatten()
     return [detections[i] for i in indices], [scores[i] for i in indices]
-
-def merge_close_boxes(boxes, scores, iou_threshold=0.2):
-    if len(boxes) == 0:
-        return [], []
-    boxes = np.array(boxes)
-    scores = np.array(scores)
-    order = scores.argsort()[::-1]
-    boxes = boxes[order]
-    scores = scores[order]
-    keep = []
-    while len(boxes) > 0:
-        box = boxes[0]
-        score = scores[0]
-        keep.append((box.tolist(), score))
-        boxes = boxes[1:]
-        scores = scores[1:]
-        if len(boxes) == 0:
-            break
-        xx1 = np.maximum(box[0], boxes[:,0])
-        yy1 = np.maximum(box[1], boxes[:,1])
-        xx2 = np.minimum(box[2], boxes[:,2])
-        yy2 = np.minimum(box[3], boxes[:,3])
-        inter = np.maximum(0, xx2-xx1) * np.maximum(0, yy2-yy1)
-        area1 = (box[2]-box[0])*(box[3]-box[1])
-        area2 = (boxes[:,2]-boxes[:,0])*(boxes[:,3]-boxes[:,1])
-        iou_vals = inter / (area1 + area2 - inter + 1e-9)
-        mask = iou_vals <= iou_threshold
-        boxes = boxes[mask]
-        scores = scores[mask]
-    if keep:
-        final_boxes, final_scores = zip(*keep)
-    else:
-        final_boxes, final_scores = [], []
-    return list(final_boxes), list(final_scores)
 
 def iou(a, b):
     x1 = max(a[0], b[0])
@@ -141,6 +108,9 @@ while True:
 
     detections, scores = [], []
 
+    # Pre-NMS logging
+    raw_tp, raw_fp = 0, 0
+
     for scale in SCALES:
         resized = cv2.resize(gray, None, fx=scale, fy=scale)
         step = STEP_SIZES[scale]
@@ -158,18 +128,25 @@ while True:
                 detections.append([x1, y1, x2, y2])
                 scores.append(score)
 
+    # NMS
     nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
-    final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
 
-    for box, score in zip(final_boxes, final_scores):
-        label = 0
+    # Hvis ingen bokse men der er ground truths → FN
+    if len(nms_boxes) == 0 and len(gt_boxes_scaled) > 0:
         for g in gt_boxes_scaled:
-            if iou(box, g) > IOU_POSITIVE:
-                label = 1
-                break
-        scores_all.append(score)
-        labels_all.append(label)
+            scores_all.append(-1.0)
+            labels_all.append(1)
+    else:
+        for box, score in zip(nms_boxes, nms_scores):
+            label = 0
+            for g in gt_boxes_scaled:
+                if iou(box, g) > IOU_POSITIVE:
+                    label = 1
+                    break
+            scores_all.append(score)
+            labels_all.append(label)
 
+    # Progress
     elapsed = time.time() - start_time
     progress = frame_id / total_frames
     if progress > 0:
@@ -224,10 +201,24 @@ plt.show()
 
 plt.figure()
 plt.plot(rec, prec, label=f"AUC = {auc(rec, prec):.4f}")
-plt.scatter([recall], [precision], color='red', s=100, label=f'Best thr = {best_threshold:.4f}')
+plt.scatter([recall], [precision], color='red', s=100,
+            label=f'Best thr = {best_threshold:.4f}')
 plt.title("Precision-Recall Curve")
 plt.xlabel("Recall")
 plt.ylabel("Precision")
 plt.grid(True)
 plt.legend()
 plt.show()
+
+print("\n" + "="*60)
+print("SUMMARY")
+print("="*60)
+print(f"AUC ROC: {auc(fpr, tpr):.4f}")
+print(f"AUC PR:  {auc(rec, prec):.4f}")
+print(f"Best Threshold: {best_threshold:.4f}")
+print(f"Best F1 Score:  {best_f1:.4f}")
+print(f"Precision: {precision:.4f}")
+print(f"Recall:    {recall:.4f}")
+print(f"Accuracy:  {accuracy:.4f}")
+print(f"TP: {tp}, FP: {fp}, FN: {fn}, TN: {tn}")
+print("="*60)

@@ -30,8 +30,8 @@ def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio
     if cropped.size == 0:
         raise ValueError("Cropped region has zero size. Check the cropping parameters.")
     
-    hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
-    hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+    lab = cv2.cvtColor(cropped, cv2.COLOR_BGR2Lab)
+    hist = cv2.calcHist([lab], [2, 1], None, [60, 60], [0, 256, 0, 256])
     hist = cv2.normalize(hist, hist).astype("float32")
     return hist
 
@@ -54,7 +54,7 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.8):
+def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.5):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """
@@ -244,7 +244,7 @@ def collect_scores(video_path, frame_annotations, reference_histograms, id_offse
             gt_label = get_ground_truth_label(ann)
             ground_truth_labels.append(gt_label)
 
-            pred_label, match_score = classify_person(roi, reference_histograms)
+            pred_label, match_score = classify_person(roi, reference_histograms, threshold_score=THRESHOLD_SCORE)
             match_scores.append(match_score)
 
             if "Military" in pred_label or "HVT" in pred_label:
@@ -294,6 +294,39 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
     # Precision-Recall curve
     plot_precision_recall(ground_truth_labels, match_scores)
 
+def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Reference templates"):
+    """
+    Evaluates  the classifier algorithm on multiple videos combined.
+    Returns one combined confusion matrix, one classification report, and one precision-recall plot.
+    """
+    # Load reference histograms
+    reference_histograms = load_reference_histograms(reference_path)
+
+    all_ground_truth, all_match_scores, all_predicted = [], [], []
+
+    for idx, (video_path, json_path) in enumerate(video_json_pairs, start=1):
+        print(f"\n--- Processing video {idx}: {video_path} ---")
+        frame_annotations = load_annotations(json_path)
+
+        ground_truth_labels, match_scores, predicted_labels = collect_scores(
+            video_path, frame_annotations, reference_histograms)
+
+        all_ground_truth.extend(ground_truth_labels)
+        all_match_scores.extend(match_scores)
+        all_predicted.extend(predicted_labels)
+
+    # Combined confusion matrix
+    print("\nConfusion Matrix (combined):\n", confusion_matrix(all_ground_truth, all_predicted))
+
+    # Combined classification report
+    print("\nClassification Report (combined):\n", classification_report(all_ground_truth, all_predicted))
+    # Reuse existing plot function
+    plot_precision_recall(all_ground_truth, all_match_scores)
 
 # Main
-evaluate_classify_person(VIDEO_PATH, COCO_JSON, reference_path="Reference templates")
+evaluate_classify_person(VIDEO_PATH, COCO_JSON)
+video_json_pairs = [
+    ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
+    ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
+]
+#evaluate_multiple_videos_combined(video_json_pairs)
