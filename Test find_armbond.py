@@ -58,7 +58,7 @@ def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area
 
     # HSV ranges (tune if needed)
     red_lower1 = np.array([0, 100, 50], dtype=np.uint8)
-    red_upper1 = np.array([10, 255, 255], dtype=np.uint8)
+    red_upper1 = np.array([5, 255, 255], dtype=np.uint8) #10 original
     red_lower2 = np.array([179, 100, 50], dtype=np.uint8) #170 original
     red_upper2 = np.array([180, 255, 255], dtype=np.uint8)
 
