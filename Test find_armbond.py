@@ -204,10 +204,10 @@ def process_person_roi(roi, person_idx):
     """Process a single person's ROI and return classification."""
 
     # Crop to upper body area
-    cropped = crop_top_of_roi(roi)
+    #cropped = crop_top_of_roi(roi)
     
     # Adaptive blur based on ROI size - larger ROIs need more blur
-    h, w = cropped.shape[:2]
+    h, w = roi.shape[:2] #cropped.shape[:2]
     roi_area = h * w
     
     # Scale kernel size based on area (min 5x5, increase for larger ROIs)
