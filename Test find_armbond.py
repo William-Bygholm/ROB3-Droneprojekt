@@ -190,8 +190,8 @@ def crop_top_of_roi(roi):
 def edge_detection(img):
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    sobelx = cv2.Sobel(img_gray, cv2.CV_64F, 1, 0, ksize=3)
-    sobely = cv2.Sobel(img_gray, cv2.CV_64F, 0, 1, ksize=3)
+    sobelx = cv2.Sobel(img_gray, cv2.CV_64F, 1, 0, ksize=5)
+    sobely = cv2.Sobel(img_gray, cv2.CV_64F, 0, 1, ksize=5)
 
     gradient_magnitude = cv2.magnitude(sobelx, sobely)
 
@@ -204,10 +204,10 @@ def process_person_roi(roi, person_idx):
     """Process a single person's ROI and return classification."""
 
     # Crop to upper body area
-    cropped = crop_top_of_roi(roi)
+    #cropped = crop_top_of_roi(roi)
     
     # Adaptive blur based on ROI size - larger ROIs need more blur
-    h, w = cropped.shape[:2]
+    h, w = roi.shape[:2] #cropped.shape[:2]
     roi_area = h * w
     
     # Scale kernel size based on area (min 5x5, increase for larger ROIs)
@@ -224,7 +224,7 @@ def process_person_roi(roi, person_idx):
     if kernel_size % 2 == 0:
         kernel_size += 1
     
-    blurred = cv2.GaussianBlur(cropped, (kernel_size, kernel_size), 0)
+    blurred = cv2.GaussianBlur(roi, (kernel_size, kernel_size), 0)
 
     if roi_area > 5000:
         edge = edge_detection(blurred)
