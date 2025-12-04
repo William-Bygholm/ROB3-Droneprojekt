@@ -14,7 +14,7 @@ MODEL_FILE = "Person_Detector_Json.pkl"
 
 SCALES = [1.0, 0.8, 0.64]   # flere scales
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
-NMS_THRESHOLD = 0.3  # justeret NMS
+NMS_THRESHOLD = 0.05  # justeret NMS
 FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
@@ -157,20 +157,27 @@ while True:
     nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
     final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
 
-    if len(final_boxes) == 0 and len(gt_boxes_scaled) > 0:
-        # Ingen detektioner → alle GT tæller som FN
-        for g in gt_boxes_scaled:
-            scores_all.append(-1.0)
-            labels_all.append(1)
-    else:
-        for box, score in zip(final_boxes, final_scores):
-            label = 0
-            for g in gt_boxes_scaled:
-                if iou(box, g) > IOU_POSITIVE:
-                    label = 1
-                    break
-            scores_all.append(score)
-            labels_all.append(label)
+    matched_gt_indices = set()
+    
+    # Match detections to ground truth
+    for box, score in zip(final_boxes, final_scores):
+        label = 0
+        matched_idx = -1
+        for gt_idx, g in enumerate(gt_boxes_scaled):
+            if iou(box, g) > IOU_POSITIVE:
+                label = 1
+                matched_idx = gt_idx
+                break
+        scores_all.append(score)
+        labels_all.append(label)
+        if matched_idx >= 0:
+            matched_gt_indices.add(matched_idx)
+    
+    # Add unmatched ground truth boxes as FN
+    for gt_idx, g in enumerate(gt_boxes_scaled):
+        if gt_idx not in matched_gt_indices:
+            scores_all.append(-1.0)  # Undetected → very low score
+            labels_all.append(1)  # But it's a positive (FN)
 
     # Progress
     elapsed = time.time() - start_time
