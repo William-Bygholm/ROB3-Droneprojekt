@@ -9,15 +9,14 @@ import csv
 from sklearn.metrics import precision_recall_curve, auc
 
 # ---------------- USER CONFIG ----------------
-DATASETS = [
-    {
-        "video": r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned.MP4",
-        "coco_json": r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json"
-    },
-    {
-        "video": r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
-        "coco_json": r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
-    }
+VIDEO_PATHS = [
+    r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned.MP4",
+    r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4"
+]
+
+GROUND_TRUTH_JSONS = [
+    r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json",
+    r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
 ]
 
 MODEL_PATH = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Person_Detector_Json+YOLO.pkl"
@@ -25,10 +24,10 @@ OUTPUT_DIR = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Dronep
 
 WINDOW_SIZE = (128, 256)
 DETECTION_STEP = 16
-CONF_THRESHOLD = 0.0
+CONF_THRESHOLD = -999999999999999
 IOU_THRESHOLD = 0.5
 USE_NMS = True
-NMS_IOU = 0.4
+NMS_IOU = 0.25
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -68,11 +67,7 @@ def nms(detections, iou_thr):
     while dets:
         best = dets.pop(0)
         keep.append(best)
-
-        dets = [
-            d for d in dets
-            if iou(best["bbox"], d["bbox"]) < iou_thr
-        ]
+        dets = [d for d in dets if iou(best["bbox"], d["bbox"]) < iou_thr]
 
     return keep
 
@@ -110,7 +105,7 @@ def main():
     model_data = joblib.load(MODEL_PATH)
     clf = model_data.get("classifier", model_data) if isinstance(model_data, dict) else model_data
 
-    # Pre-create HOG descriptor (ikke hver frame)
+    # Pre-create HOG descriptor
     hog = cv2.HOGDescriptor(
         _winSize=WINDOW_SIZE,
         _blockSize=(32, 32),
@@ -119,21 +114,23 @@ def main():
         _nbins=9
     )
 
-    # Stats
     all_TP, all_FP = [], []
     total_FN = 0
 
-    total_frames_all = sum(int(cv2.VideoCapture(ds["video"]).get(cv2.CAP_PROP_FRAME_COUNT)) for ds in DATASETS)
+    # Count total frames for ETA
+    total_frames_all = 0
+    for v in VIDEO_PATHS:
+        cap = cv2.VideoCapture(v)
+        total_frames_all += int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+
     processed_frames = 0
     start_time_total = time.time()
 
-    for dataset in DATASETS:
-        video_path = dataset["video"]
-        coco_path = dataset["coco_json"]
+    # Loop datasets
+    for video_path, coco_path in zip(VIDEO_PATHS, GROUND_TRUTH_JSONS):
 
         images, anns_by_image = load_coco_annotations(coco_path)
-
-        # Map COCO image filenames → frame index
         frame_map = {img["file_name"]: img_id for img_id, img in images.items()}
 
         cap = cv2.VideoCapture(video_path)
@@ -147,7 +144,6 @@ def main():
             frame_idx += 1
             processed_frames += 1
 
-            # COCO uses filenames, not frame numbers
             filename = f"{frame_idx}.jpg"
             if filename not in frame_map:
                 continue
@@ -155,15 +151,15 @@ def main():
             img_id = frame_map[filename]
             gts = anns_by_image[img_id]
 
-            # Precompute grayscale
-            gray_full = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            H, W = gray.shape
 
             detections = []
-            H, W = gray_full.shape
 
+            # Sliding window
             for y in range(0, H - WINDOW_SIZE[1], DETECTION_STEP):
                 for x in range(0, W - WINDOW_SIZE[0], DETECTION_STEP):
-                    patch = gray_full[y:y + WINDOW_SIZE[1], x:x + WINDOW_SIZE[0]]
+                    patch = gray[y:y + WINDOW_SIZE[1], x:x + WINDOW_SIZE[0]]
                     feat = hog.compute(patch).reshape(1, -1)
                     score = clf.decision_function(feat)[0]
 
@@ -179,13 +175,13 @@ def main():
             all_FP.extend(FP_scores)
             total_FN += FN_count
 
-            # Progress print
+            # Progress
             if processed_frames % 100 == 0:
                 elapsed = time.time() - start_time_total
                 pct = processed_frames / total_frames_all
                 eta = elapsed / pct - elapsed
                 print(f"\n{processed_frames}/{total_frames_all} frames ({pct*100:.1f}%)")
-                print(f"Elapsed: {int(elapsed)}s, Remaining: {int(eta)}s")
+                print(f"Elapsed: {int(elapsed)}s, ETA: {int(eta)}s")
                 print(f"TP={len(all_TP)}, FP={len(all_FP)}, FN={total_FN}")
 
         cap.release()
@@ -198,13 +194,14 @@ def main():
 
     precision, recall, thresholds = precision_recall_curve(y_true, y_scores)
     pr_auc = auc(recall, precision)
+    print("DEBUG: TP:", len(all_TP), "FP:", len(all_FP), "FN:", total_FN)
 
     # Save plot
     plt.figure()
     plt.plot(recall, precision)
     plt.xlabel("Recall")
     plt.ylabel("Precision")
-    plt.title(f"Merged Precision-Recall Curve (AUC={pr_auc:.3f})")
+    plt.title(f"Precision-Recall Curve (AUC={pr_auc:.3f})")
     plt.grid()
     plt.savefig(os.path.join(OUTPUT_DIR, "PR_Curve.png"))
 
