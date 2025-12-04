@@ -1,4 +1,3 @@
-# validator_fn_fixed.py
 import cv2
 import joblib
 import numpy as np
@@ -12,10 +11,10 @@ VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 
 JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
 MODEL_FILE = "Person_Detector_Json.pkl"
 
-SCALES = [1.0, 0.8, 0.64]   # flere scales
-STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
-NMS_THRESHOLD = 0.05  # justeret NMS
-FRAME_SKIP = 50
+SCALES = [1.0, 0.8, 0.64]
+STEP_SIZES = {1.0: 48, 0.8: 36, 0.64: 24}
+NMS_THRESHOLD = 0.05
+FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
 
@@ -43,15 +42,16 @@ hog = cv2.HOGDescriptor(
 # ---------------- HELPERS ----------------
 def sliding_windows(img, step, win_size):
     w, h = win_size
-    for y in range(0, img.shape[0] - h + 1, step):
-        for x in range(0, img.shape[1] - w + 1, step):
+    for y in range(0, img.shape[0]-h+1, step):
+        for x in range(0, img.shape[1]-w+1, step):
             yield x, y, img[y:y+h, x:x+w]
 
-def nms_opencv(detections, scores, score_threshold, nms_threshold):
+def nms_opencv(detections, scores, score_thresh, nms_thresh):
     if len(detections) == 0:
         return [], []
-    boxes_xywh = [[x1, y1, x2 - x1, y2 - y1] for (x1, y1, x2, y2) in detections]
-    indices = cv2.dnn.NMSBoxes(boxes_xywh, scores, score_threshold, nms_threshold)
+    boxes_xywh = np.array([[x1, y1, x2-x1, y2-y1] for x1,y1,x2,y2 in detections], dtype=np.float32)
+    scores = np.array(scores, dtype=np.float32)
+    indices = cv2.dnn.NMSBoxes(boxes_xywh.tolist(), scores.tolist(), score_thresh, nms_thresh)
     if len(indices) == 0:
         return [], []
     indices = indices.flatten()
@@ -85,7 +85,10 @@ def merge_close_boxes(boxes, scores, iou_threshold=0.2):
         mask = iou_vals <= iou_threshold
         boxes = boxes[mask]
         scores = scores[mask]
-    final_boxes, final_scores = zip(*keep) if keep else ([], [])
+    if keep:
+        final_boxes, final_scores = zip(*keep)
+    else:
+        final_boxes, final_scores = [], []
     return list(final_boxes), list(final_scores)
 
 def iou(a, b):
@@ -94,41 +97,27 @@ def iou(a, b):
     x2 = min(a[2], b[2])
     y2 = min(a[3], b[3])
     inter = max(0, x2-x1) * max(0, y2-y1)
-    area_a = (a[2]-a[0]) * (a[3]-a[1])
-    area_b = (b[2]-b[0]) * (b[3]-b[1])
+    area_a = (a[2]-a[0])*(a[3]-a[1])
+    area_b = (b[2]-b[0])*(b[3]-b[1])
     return inter / (area_a + area_b - inter + 1e-9)
 
 # ---------------- LOAD COCO JSON ----------------
 with open(JSON_COCO, "r") as f:
     coco = json.load(f)
 
-print(f"[DEBUG] Loaded JSON. Images: {len(coco.get('images', []))}, Annotations: {len(coco.get('annotations', []))}")
-
-# Map COCO image_id to frame index (0-based in JSON, but frames in video start at 1)
-image_id_to_frame = {img["id"]: idx for idx, img in enumerate(coco["images"])}
+image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
 frame_to_boxes = {}
 for ann in coco["annotations"]:
-    image_id = ann["image_id"]
-    frame_idx = image_id_to_frame.get(image_id)
-    if frame_idx is None:
+    frame_id = image_id_to_frame.get(ann["image_id"])
+    if frame_id is None:
         continue
-    # Convert to 1-based frame number for consistency with video capture
-    frame_id = frame_idx + 1
     x, y, w, h = ann["bbox"]
     frame_to_boxes.setdefault(frame_id, []).append([int(x), int(y), int(x+w), int(y+h)])
 
-print(f"[DEBUG] Frames with annotations: {len(frame_to_boxes)}")
-if frame_to_boxes:
-    frame_ids = sorted(frame_to_boxes.keys())
-    print(f"[DEBUG] Frame ID range: {frame_ids[0]} - {frame_ids[-1]}")
-    print(f"[DEBUG] Sample: Frame {frame_ids[0]} has {len(frame_to_boxes[frame_ids[0]])} boxes")
-else:
-    print("[DEBUG] WARNING: No annotations found!")
 coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
 
 # ---------------- VALIDATION LOOP ----------------
 scores_all, labels_all = [], []
-
 cap = cv2.VideoCapture(VIDEO_IN)
 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 frame_id = 0
@@ -147,13 +136,11 @@ while True:
     scale_x = w0 / coco_w
     scale_y = h0 / coco_h
     gt_boxes = frame_to_boxes.get(frame_id, [])
-    gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)] for x1,y1,x2,y2 in gt_boxes]
-    
-    # Debug: print GT info every N frames
-    if frame_id % (FRAME_SKIP * 10) == 0:
-        print(f"\n[DEBUG] Frame {frame_id}: GT boxes loaded = {len(gt_boxes_scaled)}")
+    gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)]
+                       for x1,y1,x2,y2 in gt_boxes]
 
     detections, scores = [], []
+
     for scale in SCALES:
         resized = cv2.resize(gray, None, fx=scale, fy=scale)
         step = STEP_SIZES[scale]
@@ -171,38 +158,18 @@ while True:
                 detections.append([x1, y1, x2, y2])
                 scores.append(score)
 
-    # NMS + merge
     nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
     final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
 
-    matched_gt_indices = set()
-    
-    # Match detections to ground truth
     for box, score in zip(final_boxes, final_scores):
         label = 0
-        matched_idx = -1
-        for gt_idx, g in enumerate(gt_boxes_scaled):
+        for g in gt_boxes_scaled:
             if iou(box, g) > IOU_POSITIVE:
                 label = 1
-                matched_idx = gt_idx
                 break
         scores_all.append(score)
         labels_all.append(label)
-        if matched_idx >= 0:
-            matched_gt_indices.add(matched_idx)
-    
-    # Add unmatched ground truth boxes as FN
-    unmatched_count = 0
-    for gt_idx, g in enumerate(gt_boxes_scaled):
-        if gt_idx not in matched_gt_indices:
-            scores_all.append(-1e6)  # Undetected → extremely low score (will always be below threshold)
-            labels_all.append(1)  # But it's a positive (FN)
-            unmatched_count += 1
-    
-    if frame_id % (FRAME_SKIP * 5) == 0 and len(gt_boxes_scaled) > 0:
-        print(f"\n[DEBUG] Frame {frame_id}: GT={len(gt_boxes_scaled)}, Detections={len(final_boxes)}, Matched={len(matched_gt_indices)}, Unmatched FN added={unmatched_count}")
 
-    # Progress
     elapsed = time.time() - start_time
     progress = frame_id / total_frames
     if progress > 0:
@@ -214,12 +181,7 @@ while True:
               f"Remaining: {remaining:.1f}s", end="\r")
 
 cap.release()
-print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections + FN.")
-print(f"[DEBUG] Scores shape: {len(scores_all)}, Labels shape: {len(labels_all)}")
-print(f"[DEBUG] Positive labels (TP+FN): {np.sum(np.array(labels_all) == 1)}")
-print(f"[DEBUG] Negative labels (TN+FP): {np.sum(np.array(labels_all) == 0)}")
-print(f"[DEBUG] Min score: {min(scores_all)}, Max score: {max(scores_all)}")
-print(f"[DEBUG] Scores with -1e6: {np.sum(np.array(scores_all) == -1e6)}")
+print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections.")
 
 # ---------------- METRICS ----------------
 scores = np.array(scores_all, dtype=np.float32)
@@ -230,8 +192,8 @@ f1_scores = [f1_score(labels, (scores >= thr).astype(int)) for thr in thresholds
 best_idx = int(np.argmax(f1_scores))
 best_threshold = float(thresholds[best_idx])
 best_f1 = float(f1_scores[best_idx])
-best_predictions = (scores >= best_threshold).astype(int)
 
+best_predictions = (scores >= best_threshold).astype(int)
 tp = int(np.sum((labels == 1) & (best_predictions == 1)))
 fp = int(np.sum((labels == 0) & (best_predictions == 1)))
 fn = int(np.sum((labels == 1) & (best_predictions == 0)))
@@ -241,16 +203,9 @@ precision = tp / (tp+fp) if (tp+fp) > 0 else 0
 recall = tp / (tp+fn) if (tp+fn) > 0 else 0
 accuracy = (tp+tn)/len(labels)
 
-print("\n" + "="*60)
-print("OPTIMAL THRESHOLD ANALYSIS")
-print("="*60)
-print(f"Best Threshold: {best_threshold:.4f}")
-print(f"Best F1 Score: {best_f1:.4f}")
-print(f"Precision: {precision:.4f}")
-print(f"Recall:    {recall:.4f}")
-print(f"Accuracy:  {accuracy:.4f}")
+print(f"\nBest Threshold: {best_threshold:.4f} | F1: {best_f1:.4f} | "
+      f"Precision: {precision:.4f} | Recall: {recall:.4f} | Accuracy: {accuracy:.4f}")
 print(f"TP: {tp}, FP: {fp}, FN: {fn}, TN: {tn}")
-print("="*60)
 
 # ---------------- PLOT ----------------
 fpr, tpr, _ = roc_curve(labels, scores)
@@ -269,20 +224,10 @@ plt.show()
 
 plt.figure()
 plt.plot(rec, prec, label=f"AUC = {auc(rec, prec):.4f}")
-plt.scatter([recall], [precision], color='red', s=100,
-            label=f'Best thr = {best_threshold:.4f}')
+plt.scatter([recall], [precision], color='red', s=100, label=f'Best thr = {best_threshold:.4f}')
 plt.title("Precision-Recall Curve")
 plt.xlabel("Recall")
 plt.ylabel("Precision")
 plt.grid(True)
 plt.legend()
 plt.show()
-
-print("\n" + "="*60)
-print("SUMMARY")
-print("="*60)
-print(f"AUC ROC: {auc(fpr, tpr):.4f}")
-print(f"AUC PR:  {auc(rec, prec):.4f}")
-print(f"Best Threshold: {best_threshold:.4f}")
-print(f"Best F1 Score:  {best_f1:.4f}")
-print("="*60)
