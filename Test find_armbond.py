@@ -368,8 +368,8 @@ def show_video(video_path, json_path=None):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    video_file = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
-    COCO_JSON = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
+    video_file = r"ProjektVideoer/3 mili 2 onde 1 god.MP4"
+    COCO_JSON = r"Testing/3mili 2 onde 1 god.json"
     
     video_path = get_video_path(video_file)
     show_video(video_path, COCO_JSON)
