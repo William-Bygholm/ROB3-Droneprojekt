@@ -23,8 +23,11 @@ def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio
     if cropped.size == 0:
         raise ValueError("Cropped region has zero size. Check the cropping parameters.")
     
-    hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
-    hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+    # hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
+    # hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+    # hist = cv2.normalize(hist, hist).astype("float32")
+    lab = cv2.cvtColor(cropped, cv2.COLOR_BGR2Lab)
+    hist = cv2.calcHist([lab], [1, 2], None, [50, 60], [0, 256, 0, 256])
     hist = cv2.normalize(hist, hist).astype("float32")
     return hist
 
@@ -96,7 +99,7 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
         print(f"Classification: Civilian")
         return "Civilian", match_score
 
-roi = cv2.imread('Billeder/Military close range.png')
+roi = cv2.imread('Billeder/Military long range 2.png')
 reference_histograms = load_reference_histograms("Reference templates")
 classification = classify_person(roi, reference_histograms)
 show_crop_overlay(roi)

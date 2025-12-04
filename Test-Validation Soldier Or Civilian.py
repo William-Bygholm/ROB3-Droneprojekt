@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
-THRESHOLD_SCORE = 0.8
+THRESHOLD_SCORE = 0.5
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -30,8 +30,11 @@ def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio
     if cropped.size == 0:
         raise ValueError("Cropped region has zero size. Check the cropping parameters.")
     
-    hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
-    hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+    # hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
+    # hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+    # hist = cv2.normalize(hist, hist).astype("float32")
+    lab = cv2.cvtColor(cropped, cv2.COLOR_BGR2Lab)
+    hist = cv2.calcHist([lab], [1, 2], None, [50, 60], [0, 256, 0, 256])
     hist = cv2.normalize(hist, hist).astype("float32")
     return hist
 
@@ -324,8 +327,9 @@ def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Referenc
     plot_precision_recall(all_ground_truth, all_match_scores)
 
 # Main
+evaluate_classify_person(VIDEO_PATH, COCO_JSON)
 video_json_pairs = [
     ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
     ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
 ]
-evaluate_multiple_videos_combined(video_json_pairs)
+#evaluate_multiple_videos_combined(video_json_pairs)
