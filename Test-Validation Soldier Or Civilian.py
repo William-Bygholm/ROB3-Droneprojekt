@@ -294,6 +294,37 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
     # Precision-Recall curve
     plot_precision_recall(ground_truth_labels, match_scores)
 
+def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Reference templates"):
+    """
+    Evaluates  the classifier algorithm on multiple videos combined.
+    Returns one combined confusion matrix, one classification report, and one precision-recall plot.
+    """
+    reference_histograms = load_reference_histograms(reference_path)
+
+    all_ground_truth, all_match_scores, all_predicted = [], [], []
+
+    for idx, (video_path, json_path) in enumerate(video_json_pairs, start=1):
+        print(f"\n--- Processing video {idx}: {video_path} ---")
+        frame_annotations = load_annotations(json_path)
+
+        ground_truth_labels, match_scores, predicted_labels = collect_scores(
+            video_path, frame_annotations, reference_histograms)
+
+        all_ground_truth.extend(ground_truth_labels)
+        all_match_scores.extend(match_scores)
+        all_predicted.extend(predicted_labels)
+
+    # Combined confusion matrix
+    print("\nConfusion Matrix (combined):\n", confusion_matrix(all_ground_truth, all_predicted))
+
+    # Combined classification report
+    print("\nClassification Report (combined):\n", classification_report(all_ground_truth, all_predicted))
+    # Reuse existing plot function
+    plot_precision_recall(all_ground_truth, all_match_scores)
 
 # Main
-evaluate_classify_person(VIDEO_PATH, COCO_JSON)
+video_json_pairs = [
+    ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
+    ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
+]
+evaluate_multiple_videos_combined(video_json_pairs)
