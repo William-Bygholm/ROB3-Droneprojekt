@@ -2,10 +2,12 @@ import cv2
 import numpy as np
 import os
 import json
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import confusion_matrix, classification_report, precision_recall_curve
+from matplotlib import pyplot as plt
 
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
+THRESHOLD_SCORE = 0.8
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -30,7 +32,7 @@ def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio
     
     hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
     hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
-    hist = cv2.normalize(hist, hist)
+    hist = cv2.normalize(hist, hist).astype("float32")
     return hist
 
 def load_reference_histograms(base_dir):
@@ -57,25 +59,25 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """
     roi_hist = compute_histogram(roi)
-    best_label = None
     best_score = float('inf')
 
-    for label, histograms in reference_histograms.items():
+    for histograms in reference_histograms.values():
         for ref_hist in histograms:
             score = cv2.compareHist(roi_hist, ref_hist, method)
             if score < best_score:
                 best_score = score
-                best_label = label
+    
+    # Reverse logic for Bhattacharyya distance: lower=better to higher=better and normalize to [0, 1]:
+    match_score = max(0.0, min(1.0, 1.0 - best_score))
 
     if best_score < threshold_score:
         print(f"Best score {best_score}")
-        print(f"Classification: {best_label}")
-        return best_label
+        print(f"Classification: Military")
+        return "Military", match_score
     else:
         print(f"No military match found. Best score: {best_score}")
         print(f"Classification: Civilian")
-        return "Civilian"
-
+        return "Civilian", match_score
 
 # Validation and test
 
@@ -178,6 +180,120 @@ def show_video_with_annotations(video_path=VIDEO_PATH, json_path=COCO_JSON, id_o
     cap.release()
     cv2.destroyAllWindows()
 
+def load_annotations(json_path=COCO_JSON):
+    """
+    Load JSON and return dict: image_id -> list of annotations for that frame.
+    Each annotation is expected to contain:
+    - "bbox": [x, y, w, h]
+    - "attributes": dict with class labels (e.g. "Military good": true/false).
+    """
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    frame_annotations = {}
+    for ann in data.get("annotations", []):
+        iid = ann.get("image_id")
+        if iid is None:
+            continue
+        frame_annotations.setdefault(iid, []).append(ann)
+    return frame_annotations
+
+def get_ground_truth_label(ann):
+    """Returns 1 for Military related persons, 0 for Civilian and unknown."""
+    attrs = ann.get("attributes", {})
+    for cname, active in attrs.items():
+        if not active:
+            continue
+        if "Military" in cname or "HVT" in cname:
+            return 1
+        if "Civilian" in cname:
+            return 0
+        if "Unknown" in cname:
+            return 0
+    # If nothing matched, treat as civilian.
+    return 0 # fallback
+
+def collect_scores(video_path, frame_annotations, reference_histograms, id_offsets=(0,1)):
+    """
+    Run a video frame by frame and classify persons in ROIs.
+    Returns:
+        ground_truth_labels -> 0 = Civilian, 1 = Military/HVT
+        match_scores        -> continuous scores for precision/recall curve
+        predicted_labels    -> binary predictions (0/1)
+    """
+    cap = cv2.VideoCapture(video_path)
+    ground_truth_labels, match_scores, predicted_labels = [], [], []
+    frame_idx = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        anns = []
+        for off in id_offsets:
+            if (frame_idx + off) in frame_annotations:
+                anns = frame_annotations[frame_idx + off]
+                break
+
+        for ann in anns:
+            x, y, w, h = [int(v) for v in ann["bbox"]]
+            roi = frame[y:y+h, x:x+w]
+            if roi.size == 0:
+                continue
+
+            gt_label = get_ground_truth_label(ann)
+            ground_truth_labels.append(gt_label)
+
+            pred_label, match_score = classify_person(roi, reference_histograms)
+            match_scores.append(match_score)
+
+            if "Military" in pred_label or "HVT" in pred_label:
+                predicted_labels.append(1)
+            else:
+                predicted_labels.append(0)
+
+        frame_idx += 1
+
+    cap.release()
+    return ground_truth_labels, match_scores, predicted_labels
+
+def plot_precision_recall(ground_truth_labels, match_scores):
+    """
+    Plot Precision-Recall curve based on collected scores and ground truth labels.
+    """
+    precision, recall, thresholds = precision_recall_curve(ground_truth_labels, match_scores)
+
+    plt.figure()
+    plt.plot(recall, precision, color='blue', lw=2)
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall curve: Military vs Civilian")
+    plt.show()
+
+def evaluate_classify_person(video_path, json_path, reference_path="Reference templates"):
+    """
+    Evaluates the classication algorithm on a video with annotations.
+    Output:
+    - Confusion matrix
+    - Classification report (precision, recall, f1-score)
+    - Precision-Recall curve
+    """
+    # Load reference histograms and annotations
+    reference_histograms = load_reference_histograms(reference_path)
+    frame_annotations = load_annotations(json_path)
+
+    # Collect scores
+    ground_truth_labels, match_scores, predicted_labels = collect_scores(video_path, frame_annotations, reference_histograms)
+
+    # Confusion matrix
+    print("\nConfusion Matrix:\n", confusion_matrix(ground_truth_labels, predicted_labels))
+
+    # Classification report
+    print("\nClassification Report:\n", classification_report(ground_truth_labels, predicted_labels))
+
+    # Precision-Recall curve
+    plot_precision_recall(ground_truth_labels, match_scores)
+
+
 # Main
-reference_histograms = load_reference_histograms("Reference templates")
-show_video_with_annotations()
+evaluate_classify_person(VIDEO_PATH, COCO_JSON, reference_path="Reference templates")
