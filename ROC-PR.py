@@ -176,7 +176,7 @@ while True:
     # Add unmatched ground truth boxes as FN
     for gt_idx, g in enumerate(gt_boxes_scaled):
         if gt_idx not in matched_gt_indices:
-            scores_all.append(-1.0)  # Undetected → very low score
+            scores_all.append(-1e6)  # Undetected → extremely low score (will always be below threshold)
             labels_all.append(1)  # But it's a positive (FN)
 
     # Progress
