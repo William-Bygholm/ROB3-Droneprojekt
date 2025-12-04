@@ -16,7 +16,7 @@ STEP_SIZES = {1.0: 48, 0.8: 36, 0.64: 24}
 NMS_THRESHOLD = 0.05
 FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
-IOU_POSITIVE = 0.5
+IOU_POSITIVE = 0.3
 
 # ---------------- LOAD MODEL ----------------
 print("Loading model...")

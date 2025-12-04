@@ -3,16 +3,28 @@ import cv2
 import joblib
 import numpy as np
 
-VIDEO_IN = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
+VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4"
 MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
-SCALES = [1.0, 0.8]
-STEP_SIZES = {1.0: 32, 0.8: 28}
+SCALES = [1.0, 0.8, 0.64, 0.5, 0.4]  # Tilføjer 0.5 og 0.4 skalaer
+STEP_SIZES = {
+    1.0: 48,
+    0.8: 36,
+    0.64: 24,
+    0.5: 16,
+    0.4: 12
+}
+
 
 NMS_THRESHOLD = 0.05
 DISPLAY_SCALE = 0.3
+<<<<<<< HEAD
 FRAME_SKIP = 20
 SVM_THRESHOLD = 2
+=======
+FRAME_SKIP = 40
+SVM_THRESHOLD = 0.8
+>>>>>>> fa368a193da2d0628d649223bd8d54ceff256772
 
 
 # ---------------- LOAD MODEL ----------------
