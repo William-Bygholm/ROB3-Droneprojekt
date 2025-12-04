@@ -1,14 +1,37 @@
 import os
 import cv2
-import numpy as np
 import json
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, classification_report
+import seaborn as sns
+
+# Define multiple video/annotation pairs
+DATASET = [
+    {
+        "video": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4",
+        "json": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
+    },
+    {
+        "video": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
+        "json": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json"
+    }
+    # Add more video/json pairs here as needed
+]
+
+OUTPUT_DIR = r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Output"
 
 def load_coco_annotations(json_path):
     """Load COCO JSON and organize annotations by frame"""
     with open(json_path, 'r') as f:
         data = json.load(f)
     
-    # Create mapping from image_id to annotations
+    # Create mapping from image_id to frame info
+    image_id_to_frame = {}
+    for img in data['images']:
+        image_id_to_frame[img['id']] = img
+    
+    # Organize annotations by image_id
     frame_annotations = {}
     for ann in data['annotations']:
         image_id = ann['image_id']
@@ -16,59 +39,107 @@ def load_coco_annotations(json_path):
             frame_annotations[image_id] = []
         frame_annotations[image_id].append(ann)
     
-    # Create mapping from image_id to frame number (if available)
-    image_info = {img['id']: img for img in data['images']}
-    
-    print(f"Found {len(image_info)} images with {len(frame_annotations)} annotated frames")
-    if image_info:
-        sample_ids = list(image_info.keys())[:5]
-        print(f"Sample image IDs: {sample_ids}")
-    
-    return frame_annotations, image_info
+    return frame_annotations, image_id_to_frame, data
 
-def get_video_path(video_file):
-
-    if os.path.isabs(video_file):
-        video_path = video_file
+def get_ground_truth_label(annotation):
+    """Extract ground truth label from COCO annotation attributes"""
+    attrs = annotation.get('attributes', {})
+    
+    # Check for HVT first
+    if attrs.get('Good HVT', False):
+        return 'Good HVT'
+    elif attrs.get('Bad HVT', False):
+        return 'Bad HVT'
+    # Then check for regular soldiers
+    elif attrs.get('Military good', False):
+        return 'Good soldier'
+    elif attrs.get('Military bad', False):
+        return 'Bad soldier'
+    elif attrs.get('Military', False):
+        return 'Soldier'
+    elif attrs.get('Civilian', False):
+        return 'Civilian'
+    elif attrs.get('Unknown person', False):
+        return 'Unknown'
     else:
-        video_path = os.path.join(os.path.dirname(__file__), video_file)
-    
-    if not os.path.isfile(video_path):
-        raise ValueError(f"The video file '{video_path}' does not exist.")
-    
-    return video_path
+        return 'Soldier'  # Default
 
-def color_mask(hsv, lower, upper):
-    """Handle hue wrap-around when creating an inRange mask."""
-    lh, ls, lv = int(lower[0]), int(lower[1]), int(lower[2])
-    uh, us, uv = int(upper[0]), int(upper[1]), int(upper[2])
-    if lh <= uh:
-        return cv2.inRange(hsv, np.array([lh, ls, lv], np.uint8), np.array([uh, us, uv], np.uint8))
-    # wrap around 180 -> union of two ranges
-    m1 = cv2.inRange(hsv, np.array([lh, ls, lv], np.uint8), np.array([179, us, uv], np.uint8))
-    m2 = cv2.inRange(hsv, np.array([0, ls, lv], np.uint8), np.array([uh, us, uv], np.uint8))
-    return cv2.bitwise_or(m1, m2)
+def normalize_prediction(classification):
+    """Normalize prediction to match ground truth labels"""
+    # Map various prediction strings to standard labels
+    if 'Good soldier (HVT)' in classification or 'Good HVT' in classification:
+        return 'Good HVT'
+    elif 'Bad soldier (HVT)' in classification or 'Bad HVT' in classification:
+        return 'Bad HVT'
+    elif 'Good soldier' in classification:
+        return 'Good soldier'
+    elif 'Bad soldier' in classification:
+        return 'Bad soldier'
+    else:
+        return 'Soldier'
+
+def plot_confusion_matrix(y_true, y_pred, output_path):
+    """Generate and save confusion matrix as PNG"""
+    # Define class order
+    labels = ['Good soldier', 'Bad soldier', 'Good HVT', 'Bad HVT', 'Soldier']
+    
+    # Filter to only include labels that appear in the data
+    unique_labels = sorted(set(y_true + y_pred))
+    labels = [l for l in labels if l in unique_labels]
+    
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    
+    # Create figure
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=labels, yticklabels=labels,
+                cbar_kws={'label': 'Count'})
+    
+    plt.title('Confusion Matrix - Soldier Classification', fontsize=16, fontweight='bold')
+    plt.ylabel('Ground Truth', fontsize=12)
+    plt.xlabel('Predicted', fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    
+    # Save figure
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"\nConfusion matrix saved to: {output_path}")
+    
+    # Calculate and print metrics
+    print("\n" + "="*60)
+    print("CLASSIFICATION REPORT")
+    print("="*60)
+    print(classification_report(y_true, y_pred, labels=labels, zero_division=0))
+    
+    # Calculate overall accuracy
+    accuracy = np.sum(np.array(y_true) == np.array(y_pred)) / len(y_true) * 100
+    print(f"\nOverall Accuracy: {accuracy:.2f}%")
+    print(f"Total Samples: {len(y_true)}")
+    
+    plt.close()
 
 def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2):
-    """
-    Return annotated image, counts, and masks for detected red and blue patches.
-    Keeps only up to `max_components` largest components per color.
-    """
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
-    # HSV ranges (tune if needed)
-    red_lower1 = np.array([0, 100, 50], dtype=np.uint8)
-    red_upper1 = np.array([1, 255, 255], dtype=np.uint8) #10 original
-    red_lower2 = np.array([170, 100, 50], dtype=np.uint8) #170 original
-    red_upper2 = np.array([180, 255, 255], dtype=np.uint8)
+    # HSV ranges - Tune these values directly
+    # Red ranges (wraps around H=0/180)
+    RED_LOWER1 = [5, 160, 75]      # [H, S, V]
+    RED_UPPER1 = [10, 255, 255]
+    RED_LOWER2 = [170, 160, 75]
+    RED_UPPER2 = [180, 255, 255]
+    
+    # Blue range
+    BLUE_LOWER = [100, 100, 50]
+    BLUE_UPPER = [130, 255, 255]
 
-    blue_lower = np.array([100, 100, 50], dtype=np.uint8)
-    blue_upper = np.array([130, 255, 255], dtype=np.uint8)
-
-    # Build masks
-    mask_red = cv2.bitwise_or(color_mask(hsv, red_lower1, red_upper1),
-                              color_mask(hsv, red_lower2, red_upper2))
-    mask_blue = color_mask(hsv, blue_lower, blue_upper)
+    # Build masks using cv2.inRange directly
+    mask_red1 = cv2.inRange(hsv, np.array(RED_LOWER1, dtype=np.uint8), np.array(RED_UPPER1, dtype=np.uint8))
+    mask_red2 = cv2.inRange(hsv, np.array(RED_LOWER2, dtype=np.uint8), np.array(RED_UPPER2, dtype=np.uint8))
+    mask_red = cv2.bitwise_or(mask_red1, mask_red2)
+    
+    mask_blue = cv2.inRange(hsv, np.array(BLUE_LOWER, dtype=np.uint8), np.array(BLUE_UPPER, dtype=np.uint8))
 
     # Morphological cleanup
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
@@ -114,7 +185,6 @@ def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area
     return out, mask_red, mask_blue, red_boxes, blue_boxes
 
 def classify_target(red_boxes, blue_boxes):
-  
     num_red = len(red_boxes)
     num_blue = len(blue_boxes)
     
@@ -168,209 +238,216 @@ def classify_target(red_boxes, blue_boxes):
     # Fallback for any other combinations
     return "Uncertain classification", None, False
 
-def crop_top_of_roi(roi):
-    """Crop the top portion of a person ROI to focus on upper body where armband is."""
-    TOP_REMOVE_RATIO = 0.25  # remove top 25% of ROI
-    TOP_KEEP_RATIO = 0.5     # keep up to 50% of ROI
-    h = roi.shape[0]
-    start_row = int(h * TOP_REMOVE_RATIO)
-    end_row = int(h * TOP_KEEP_RATIO)
-    if start_row >= end_row:
-        roi = roi[:int(h * TOP_KEEP_RATIO), :]
-    else:
-        roi = roi[start_row:end_row, :]
+def crop_to_bbox(img, bbox):
+    """Crop image to bounding box [x, y, width, height]"""
+    x, y, w, h = [int(v) for v in bbox]
+    # Ensure coordinates are within image bounds
+    img_h, img_w = img.shape[:2]
+    x = max(0, min(x, img_w - 1))
+    y = max(0, min(y, img_h - 1))
+    w = min(w, img_w - x)
+    h = min(h, img_h - y)
+    return img[y:y+h, x:x+w]
 
-    SIDES_REMOVE_RATIO = 0.15  # remove 15% from left and 15% from right
-    w = roi.shape[1]
-    left = int(w * SIDES_REMOVE_RATIO)
-    right = int(w * (1.0 - SIDES_REMOVE_RATIO))
-    roi = roi[:, left:right]
-    return roi
+def process_bbox_region(bbox_img):
+    """Process a bounding box region: crop, blur, and analyze"""
+    if bbox_img is None or bbox_img.size == 0:
+        return None, [], []
+    
+    # Apply Gaussian blur
+    blurred = cv2.GaussianBlur(bbox_img, (13, 13), 0)
+    
+    # Run blob analysis
+    annotated, _, _, red_boxes, blue_boxes = blob_analysis(blurred, morph_kernel=(3, 3), morph_iters=1)
+    
+    return annotated, red_boxes, blue_boxes
 
-def edge_detection(img):
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-
-    #sobelx = cv2.Sobel(img_gray, cv2.CV_64F, 1, 0, ksize=3)
-    #sobely = cv2.Sobel(img_gray, cv2.CV_64F, 0, 1, ksize=3)
-
-    #gradient_magnitude = cv2.magnitude(sobelx, sobely)
-
-    #gradient_magnitude = cv2.convertScaleAbs(gradient_magnitude)
-
-    return img_gray #gradient_magnitude
-
-
-def process_person_roi(roi, person_idx):
-    """Process a single person's ROI and return classification."""
-
-    # Crop to upper body area
-    #cropped = crop_top_of_roi(roi)
+def process_video(video_path, json_path, scale=0.5, show_video=True):
+    """Process video frame by frame, classify soldiers in COCO bounding boxes, and display results.
     
-    #LAB = cv2.cvtColor(roi, cv2.COLOR_BGR2LAB)
-    # Adaptive blur based on ROI size - larger ROIs need more blur
-    h, w = roi.shape[:2] #cropped.shape[:2]
-    roi_area = h * w
+    Args:
+        video_path: Path to video file
+        json_path: Path to COCO JSON annotations
+        scale: Scale factor for display (0.5 = 50%, 1.0 = 100%)
+        show_video: Whether to show video window (set False for faster processing)
+    """
+    print(f"Loading annotations from: {json_path}")
+    frame_annotations, image_id_to_frame, coco_data = load_coco_annotations(json_path)
+    print(f"Loaded {len(frame_annotations)} frames with annotations")
     
-    # Scale kernel size based on area (min 5x5, increase for larger ROIs)
-    if roi_area < 10000:  # Small ROI
-        kernel_size = 5
-    elif roi_area < 20000:  # Medium ROI
-        kernel_size = 7
-    elif roi_area < 300000:  # Large ROI
-        kernel_size = 9
-    else:  # Very large ROI
-        kernel_size = 11
-    
-    # Ensure kernel size is odd
-    if kernel_size % 2 == 0:
-        kernel_size += 1
-    
-    blurred = cv2.GaussianBlur(roi, (kernel_size, kernel_size), 0)
-
-    if roi_area > 5000:
-        edge = edge_detection(blurred)
-        cv2.imshow("Edges", edge)
-
-    annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(
-        blurred, 
-        morph_kernel=(3,3), 
-        morph_iters=1,
-        min_pixels=10,
-        rel_area_multiplier=0.002,
-        max_components=2
-    )
-    
-    # Classify the target based on detected boxes
-    classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
-    
-    return annotated, classification, target_type, is_hvt, len(red_boxes), len(blue_boxes)
-
-def process_frame_with_boxes(img, frame_number, annotations):
-    """Process a frame with given bounding boxes, analyzing each person separately."""
-    results = []
-    display_images = []
-    
-    if not annotations:
-        print(f"Frame {frame_number}: No bounding boxes found")
-        return img, results, display_images
-    
-    print(f"\nFrame {frame_number}: Processing {len(annotations)} person(s)")
-    
-    output_img = img.copy()
-    
-    for idx, ann in enumerate(annotations, 1):
-        bbox = ann['bbox']  # COCO format: [x, y, width, height]
-        x, y, w, h = [int(v) for v in bbox]
-        
-        # Extract ROI
-        roi = img[y:y+h, x:x+w]
-        
-        if roi.size == 0:
-            print(f"  Person {idx}: Invalid ROI, skipping")
-            continue
-        
-        # Process this person's ROI
-        annotated, classification, target_type, is_hvt, n_red, n_blue = process_person_roi(roi, idx)
-        
-        # Print classification
-        print(f"  Person {idx}: {classification} | Red: {n_red}, Blue: {n_blue}")
-        
-        # Draw bounding box on output image
-        color = (0, 255, 0) if target_type == "good" else (0, 0, 255) if target_type == "bad" else (128, 128, 128)
-        cv2.rectangle(output_img, (x, y), (x+w, y+h), color, 2)
-        
-        # Add label
-        label = f"P{idx}: {classification}"
-        cv2.putText(output_img, label, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-        
-        # Store the annotated ROI for display
-        display_images.append((f"Person {idx}", annotated))
-        
-        results.append({
-            'person_id': idx,
-            'classification': classification,
-            'target_type': target_type,
-            'is_hvt': is_hvt,
-            'bbox': (x, y, w, h)
-        })
-    
-    return output_img, results, display_images
-def show_video(video_path, json_path=None):
-    """Process and display video frame by frame with optional bounding boxes from JSON."""
-    # Load annotations if JSON provided
-    frame_annotations = {}
-    image_info = {}
-    if json_path and os.path.exists(json_path):
-        print(f"Loading annotations from: {json_path}")
-        frame_annotations, image_info = load_coco_annotations(json_path)
-    else:
-        print("No JSON file provided or file not found - will skip frames without annotations")
-    
+    print(f"Opening video: {video_path}")
     cap = cv2.VideoCapture(video_path)
-    
     if not cap.isOpened():
-        print(f"Error: Could not open video {video_path}")
-        return
+        print(f"Error: Cannot open video {video_path}")
+        return None, None
     
-    win_main = "Video - Press SPACE for next frame, Q to quit"
-    cv2.namedWindow(win_main, cv2.WINDOW_NORMAL)
+    # Get video properties
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    print(f"Video info: {w}x{h}, {fps} fps, {total_frames} frames")
+    
+    # Calculate display dimensions
+    display_w = int(w * scale)
+    display_h = int(h * scale)
+    
+    if show_video:
+        cv2.namedWindow("Video - Press SPACE/any key to advance, Q/ESC to quit", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("Video - Press SPACE/any key to advance, Q/ESC to quit", display_w, display_h)
     
     frame_idx = 0
+    processed_count = 0
+    
+    # Storage for confusion matrix
+    y_true = []  # Ground truth labels
+    y_pred = []  # Predicted labels
+    
+    # Try different offsets for frame to image_id mapping
+    offsets_to_try = [0, 1, 3720]
     
     while True:
         ret, frame = cap.read()
-        
         if not ret:
-            print("End of video reached")
+            print(f"\nEnd of video reached. Processed {processed_count} frames with annotations.")
             break
         
-        try:
-            # Try to match frame to image_id (same logic as overlay_coco_annotations.py)
-            matching_annotations = []
-            
-            # Try different possible image_id values to find the match
-            for possible_id in [frame_idx, frame_idx + 1, 3720 + frame_idx]:
-                if possible_id in frame_annotations:
-                    matching_annotations = frame_annotations[possible_id]
-                    break
-            
-            if matching_annotations:
-                # Process with bounding boxes
-                out, results, display_images = process_frame_with_boxes(frame, frame_idx, matching_annotations)
-                
-                # Display main frame
-                cv2.imshow(win_main, out)
-                
-                # Display individual person ROIs
-                for person_label, roi_img in display_images:
-                    win_name = f"{person_label} - Frame {frame_idx}"
-                    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-                    cv2.imshow(win_name, roi_img)
-            else:
-                # No boxes for this frame, just show the frame
-                if frame_idx % 30 == 0:  # Print less frequently
-                    print(f"Frame {frame_idx}: No annotations")
-                cv2.imshow(win_main, frame)
+        display_frame = frame.copy()
         
-        except Exception as e:
-            print(f"Error processing frame {frame_idx}: {e}")
-            import traceback
-            traceback.print_exc()
-            continue
+        # Try to find annotations for this frame using different image_id mappings
+        image_id = None
+        annotations = None
+        for offset in offsets_to_try:
+            test_id = frame_idx + offset
+            if test_id in frame_annotations:
+                image_id = test_id
+                annotations = frame_annotations[test_id]
+                break
         
-        # Wait for keypress (0 = wait indefinitely)
-        k = cv2.waitKey(0) & 0xFF
-        if k == 27 or k == ord('q'):  # ESC or Q to quit
-            break
+        if annotations:
+            # Process each bounding box in this frame
+            for ann in annotations:
+                bbox = ann['bbox']  # [x, y, width, height]
+                x, y, w_box, h_box = [int(v) for v in bbox]
+                
+                # Extract the region within the bounding box
+                bbox_img = crop_to_bbox(frame, bbox)
+                
+                if bbox_img is not None and bbox_img.size > 0:
+                    # Process the bbox region
+                    annotated_bbox, red_boxes, blue_boxes = process_bbox_region(bbox_img)
+                    
+                    if annotated_bbox is not None:
+                        # Classify the target
+                        classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
+                        
+                        # Get ground truth label
+                        ground_truth = get_ground_truth_label(ann)
+                        predicted = normalize_prediction(classification)
+                        
+                        # Store for confusion matrix
+                        y_true.append(ground_truth)
+                        y_pred.append(predicted)
+                        
+                        # Choose color based on classification
+                        if target_type == "good":
+                            box_color = (0, 255, 0)  # Green for good soldier
+                        elif target_type == "bad":
+                            box_color = (0, 0, 255)  # Red for bad soldier
+                        else:
+                            box_color = (255, 255, 0)  # Cyan for uncertain
+                        
+                        # Draw bounding box on display frame
+                        thickness = 3 if is_hvt else 2
+                        cv2.rectangle(display_frame, (x, y), (x + w_box, y + h_box), box_color, thickness)
+                        
+                        # Add classification text
+                        label = classification
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        font_scale = 0.6
+                        text_thickness = 2
+                        (text_w, text_h), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
+                        
+                        # Draw text background
+                        cv2.rectangle(display_frame, (x, y - text_h - 10), (x + text_w + 10, y), box_color, -1)
+                        # Draw text
+                        cv2.putText(display_frame, label, (x + 5, y - 5), font, font_scale, (255, 255, 255), text_thickness)
+                        
+                        if show_video:
+                            print(f"Frame {frame_idx}: GT={ground_truth}, Pred={predicted}")
+            
+            processed_count += 1
+        
+        if show_video:
+            # Add frame counter
+            cv2.putText(display_frame, f"Frame: {frame_idx}/{total_frames}", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            
+            # Resize for display
+            if scale != 1.0:
+                display_frame = cv2.resize(display_frame, (display_w, display_h))
+            
+            cv2.imshow("Video - Press SPACE/any key to advance, Q/ESC to quit", display_frame)
+            
+            # Wait for key press (0 = wait indefinitely)
+            k = cv2.waitKey(0) & 0xFF
+            if k == 27 or k == ord('q') or k == ord('Q'):  # ESC or Q
+                print("\nQuitting early...")
+                break
+        else:
+            # Auto-advance without display
+            if frame_idx % 100 == 0:
+                print(f"Processing frame {frame_idx}/{total_frames}...")
         
         frame_idx += 1
     
     cap.release()
-    cv2.destroyAllWindows()
+    if show_video:
+        cv2.destroyAllWindows()
+    print(f"\nProcessing complete! Processed {processed_count} frames with annotations.")
+    
+    return y_true, y_pred
+
 
 if __name__ == "__main__":
-    video_file = r"ProjektVideoer/3 mili 2 onde 1 god.MP4"
-    COCO_JSON = r"Testing/3mili 2 onde 1 god.json"
+    # Process all videos and collect predictions
+    all_y_true = []
+    all_y_pred = []
     
-    video_path = get_video_path(video_file)
-    show_video(video_path, COCO_JSON)
+    print(f"Processing {len(DATASET)} video(s)...")
+    print("="*60)
+    
+    for idx, data in enumerate(DATASET):
+        video_path = data["video"]
+        json_path = data["json"]
+        
+        print(f"\n[Dataset {idx+1}/{len(DATASET)}]")
+        print(f"Video: {os.path.basename(video_path)}")
+        print(f"JSON: {os.path.basename(json_path)}")
+        print("-"*60)
+        
+        y_true, y_pred = process_video(video_path, json_path, scale=0.5, show_video=False)
+        
+        if y_true and y_pred:
+            all_y_true.extend(y_true)
+            all_y_pred.extend(y_pred)
+            print(f"Collected {len(y_true)} predictions from this video")
+        else:
+            print(f"No predictions collected from this video")
+    
+    print("\n" + "="*60)
+    print(f"TOTAL PREDICTIONS COLLECTED: {len(all_y_true)}")
+    print("="*60)
+    
+    if all_y_true and all_y_pred:
+        # Create output directory if it doesn't exist
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        
+        # Generate confusion matrix
+        output_path = os.path.join(OUTPUT_DIR, "confusion_matrix_combined.png")
+        plot_confusion_matrix(all_y_true, all_y_pred, output_path)
+        
+        print(f"\nCombined confusion matrix saved to: {output_path}")
+    else:
+        print("No predictions collected from any video!")

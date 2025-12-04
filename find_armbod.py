@@ -11,17 +11,6 @@ def get_image_paths(folder_path):
                    if os.path.splitext(f)[1].lower() in [".png", ".jpg", ".jpeg"]]
     return image_paths
 
-def color_mask(hsv, lower, upper):
-    """Handle hue wrap-around when creating an inRange mask."""
-    lh, ls, lv = int(lower[0]), int(lower[1]), int(lower[2])
-    uh, us, uv = int(upper[0]), int(upper[1]), int(upper[2])
-    if lh <= uh:
-        return cv2.inRange(hsv, np.array([lh, ls, lv], np.uint8), np.array([uh, us, uv], np.uint8))
-    # wrap around 180 -> union of two ranges
-    m1 = cv2.inRange(hsv, np.array([lh, ls, lv], np.uint8), np.array([179, us, uv], np.uint8))
-    m2 = cv2.inRange(hsv, np.array([0, ls, lv], np.uint8), np.array([uh, us, uv], np.uint8))
-    return cv2.bitwise_or(m1, m2)
-
 def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area_multiplier=0.004, max_components=2):
     """
     Return annotated image, counts, and masks for detected red and blue patches.
@@ -29,19 +18,23 @@ def blob_analysis(img, morph_kernel=(3,3), morph_iters=1, min_pixels=1, rel_area
     """
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
-    # HSV ranges (tune if needed)
-    red_lower1 = np.array([0, 100, 50], dtype=np.uint8)
-    red_upper1 = np.array([10, 255, 255], dtype=np.uint8)
-    red_lower2 = np.array([170, 100, 50], dtype=np.uint8)
-    red_upper2 = np.array([180, 255, 255], dtype=np.uint8)
+    # HSV ranges - Tune these values directly
+    # Red ranges (wraps around H=0/180)
+    RED_LOWER1 = [5, 160, 75]      # [H, S, V]
+    RED_UPPER1 = [10, 255, 255]
+    RED_LOWER2 = [170, 160, 75]
+    RED_UPPER2 = [180, 255, 255]
+    
+    # Blue range
+    BLUE_LOWER = [100, 100, 50]
+    BLUE_UPPER = [130, 255, 255]
 
-    blue_lower = np.array([100, 100, 50], dtype=np.uint8)
-    blue_upper = np.array([130, 255, 255], dtype=np.uint8)
-
-    # Build masks
-    mask_red = cv2.bitwise_or(color_mask(hsv, red_lower1, red_upper1),
-                              color_mask(hsv, red_lower2, red_upper2))
-    mask_blue = color_mask(hsv, blue_lower, blue_upper)
+    # Build masks using cv2.inRange directly
+    mask_red1 = cv2.inRange(hsv, np.array(RED_LOWER1, dtype=np.uint8), np.array(RED_UPPER1, dtype=np.uint8))
+    mask_red2 = cv2.inRange(hsv, np.array(RED_LOWER2, dtype=np.uint8), np.array(RED_UPPER2, dtype=np.uint8))
+    mask_red = cv2.bitwise_or(mask_red1, mask_red2)
+    
+    mask_blue = cv2.inRange(hsv, np.array(BLUE_LOWER, dtype=np.uint8), np.array(BLUE_UPPER, dtype=np.uint8))
 
     # Morphological cleanup
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, morph_kernel)
