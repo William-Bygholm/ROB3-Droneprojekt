@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
+THRESHOLD_SCORE = 0.8
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -53,7 +54,7 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.8):
+def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=THRESHOLD_SCORE):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """
@@ -200,6 +201,9 @@ def get_ground_truth_label(ann):
             return 1
         if "Civilian" in cname:
             return 0
+        if "Unknown" in cname:
+            return 0
+    # If nothing matched, treat as civilian.
     return 0 # fallback
 
 def collect_scores(video_path, frame_annotations, reference_histograms, threshold_score, id_offsets=(0,1)):

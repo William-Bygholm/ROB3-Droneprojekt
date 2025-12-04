@@ -76,24 +76,25 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """
     roi_hist = compute_histogram(roi)
-    best_label = None
     best_score = float('inf')
 
-    for label, histograms in reference_histograms.items():
+    for histograms in reference_histograms.values():
         for ref_hist in histograms:
             score = cv2.compareHist(roi_hist, ref_hist, method)
             if score < best_score:
                 best_score = score
-                best_label = label
+    
+    # Reverse logic for Bhattacharyya distance: lower=better to higher=better and normalize to [0, 1]:
+    match_score = max(0.0, min(1.0, 1.0 - best_score))
 
     if best_score < threshold_score:
         print(f"Best score {best_score}")
-        print(f"Classification: {best_label}")
-        return best_label, best_score
+        print(f"Classification: Military")
+        return "Military", match_score
     else:
         print(f"No military match found. Best score: {best_score}")
         print(f"Classification: Civilian")
-        return "Civilian", best_score
+        return "Civilian", match_score
 
 roi = cv2.imread('Billeder/Military close range.png')
 reference_histograms = load_reference_histograms("Reference templates")
