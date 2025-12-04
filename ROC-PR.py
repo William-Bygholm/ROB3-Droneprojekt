@@ -119,7 +119,11 @@ for ann in coco["annotations"]:
 
 print(f"[DEBUG] Frames with annotations: {len(frame_to_boxes)}")
 if frame_to_boxes:
-    print(f"[DEBUG] Frame ID range: {min(frame_to_boxes.keys())} - {max(frame_to_boxes.keys())}")
+    frame_ids = sorted(frame_to_boxes.keys())
+    print(f"[DEBUG] Frame ID range: {frame_ids[0]} - {frame_ids[-1]}")
+    print(f"[DEBUG] Sample: Frame {frame_ids[0]} has {len(frame_to_boxes[frame_ids[0]])} boxes")
+else:
+    print("[DEBUG] WARNING: No annotations found!")
 coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
 
 # ---------------- VALIDATION LOOP ----------------
@@ -210,11 +214,12 @@ while True:
               f"Remaining: {remaining:.1f}s", end="\r")
 
 cap.release()
-print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections.")
+print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections + FN.")
 print(f"[DEBUG] Scores shape: {len(scores_all)}, Labels shape: {len(labels_all)}")
 print(f"[DEBUG] Positive labels (TP+FN): {np.sum(np.array(labels_all) == 1)}")
 print(f"[DEBUG] Negative labels (TN+FP): {np.sum(np.array(labels_all) == 0)}")
 print(f"[DEBUG] Min score: {min(scores_all)}, Max score: {max(scores_all)}")
+print(f"[DEBUG] Scores with -1e6: {np.sum(np.array(scores_all) == -1e6)}")
 
 # ---------------- METRICS ----------------
 scores = np.array(scores_all, dtype=np.float32)
