@@ -15,7 +15,7 @@ MODEL_FILE = "Person_Detector_Json.pkl"
 SCALES = [1.0, 0.8, 0.64]   # flere scales
 STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
 NMS_THRESHOLD = 0.05  # justeret NMS
-FRAME_SKIP = 2
+FRAME_SKIP = 50
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
 
