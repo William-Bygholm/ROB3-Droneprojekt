@@ -1,4 +1,4 @@
-# validator_optimized.py
+# validator_fn_fixed.py
 import cv2
 import joblib
 import numpy as np
@@ -12,10 +12,10 @@ VIDEO_IN = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 
 JSON_COCO = r"C:\Users\alexa\Documents\GitHub\ROB3-Droneprojekt\Validation\2 mili med blå bond.json"
 MODEL_FILE = "Person_Detector_Json.pkl"
 
-SCALES = [1.0, 0.8]  # drop small scale for speed
-STEP_SIZES = {1.0: 48, 0.8: 36}
-NMS_THRESHOLD = 0.05
-FRAME_SKIP = 2  # skip frames
+SCALES = [1.0, 0.8, 0.64]   # flere scales
+STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 24}
+NMS_THRESHOLD = 0.3  # justeret NMS
+FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
 
@@ -50,9 +50,8 @@ def sliding_windows(img, step, win_size):
 def nms_opencv(detections, scores, score_threshold, nms_threshold):
     if len(detections) == 0:
         return [], []
-    boxes_xywh = np.array([[x1, y1, x2 - x1, y2 - y1] for (x1, y1, x2, y2) in detections], dtype=np.float32)
-    scores = np.array(scores, dtype=np.float32)
-    indices = cv2.dnn.NMSBoxes(boxes_xywh.tolist(), scores.tolist(), score_threshold, nms_threshold)
+    boxes_xywh = [[x1, y1, x2 - x1, y2 - y1] for (x1, y1, x2, y2) in detections]
+    indices = cv2.dnn.NMSBoxes(boxes_xywh, scores, score_threshold, nms_threshold)
     if len(indices) == 0:
         return [], []
     indices = indices.flatten()
@@ -75,7 +74,6 @@ def merge_close_boxes(boxes, scores, iou_threshold=0.2):
         scores = scores[1:]
         if len(boxes) == 0:
             break
-        # Compute IoU
         xx1 = np.maximum(box[0], boxes[:,0])
         yy1 = np.maximum(box[1], boxes[:,1])
         xx2 = np.minimum(box[2], boxes[:,2])
@@ -138,7 +136,6 @@ while True:
     gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)] for x1,y1,x2,y2 in gt_boxes]
 
     detections, scores = [], []
-    # --- BATCH HOG ---
     for scale in SCALES:
         resized = cv2.resize(gray, None, fx=scale, fy=scale)
         step = STEP_SIZES[scale]
@@ -160,14 +157,20 @@ while True:
     nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
     final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
 
-    for box, score in zip(final_boxes, final_scores):
-        label = 0
+    if len(final_boxes) == 0 and len(gt_boxes_scaled) > 0:
+        # Ingen detektioner → alle GT tæller som FN
         for g in gt_boxes_scaled:
-            if iou(box, g) > IOU_POSITIVE:
-                label = 1
-                break
-        scores_all.append(score)
-        labels_all.append(label)
+            scores_all.append(-1.0)
+            labels_all.append(1)
+    else:
+        for box, score in zip(final_boxes, final_scores):
+            label = 0
+            for g in gt_boxes_scaled:
+                if iou(box, g) > IOU_POSITIVE:
+                    label = 1
+                    break
+            scores_all.append(score)
+            labels_all.append(label)
 
     # Progress
     elapsed = time.time() - start_time
@@ -198,12 +201,22 @@ tp = int(np.sum((labels == 1) & (best_predictions == 1)))
 fp = int(np.sum((labels == 0) & (best_predictions == 1)))
 fn = int(np.sum((labels == 1) & (best_predictions == 0)))
 tn = int(np.sum((labels == 0) & (best_predictions == 0)))
+
 precision = tp / (tp+fp) if (tp+fp) > 0 else 0
 recall = tp / (tp+fn) if (tp+fn) > 0 else 0
 accuracy = (tp+tn)/len(labels)
 
-print(f"\nBest Threshold: {best_threshold:.4f} | F1: {best_f1:.4f} | Precision: {precision:.4f} | Recall: {recall:.4f} | Accuracy: {accuracy:.4f}")
+print("\n" + "="*60)
+print("OPTIMAL THRESHOLD ANALYSIS")
+print("="*60)
+print(f"Best Threshold: {best_threshold:.4f}")
+print(f"Best F1 Score: {best_f1:.4f}")
+print(f"Precision: {precision:.4f}")
+print(f"Recall:    {recall:.4f}")
+print(f"Accuracy:  {accuracy:.4f}")
 print(f"TP: {tp}, FP: {fp}, FN: {fn}, TN: {tn}")
+print("="*60)
+
 # ---------------- PLOT ----------------
 fpr, tpr, _ = roc_curve(labels, scores)
 prec, rec, _ = precision_recall_curve(labels, scores)
@@ -229,3 +242,12 @@ plt.ylabel("Precision")
 plt.grid(True)
 plt.legend()
 plt.show()
+
+print("\n" + "="*60)
+print("SUMMARY")
+print("="*60)
+print(f"AUC ROC: {auc(fpr, tpr):.4f}")
+print(f"AUC PR:  {auc(rec, prec):.4f}")
+print(f"Best Threshold: {best_threshold:.4f}")
+print(f"Best F1 Score:  {best_f1:.4f}")
+print("="*60)
