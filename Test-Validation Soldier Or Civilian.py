@@ -2,12 +2,8 @@ import cv2
 import numpy as np
 import os
 import json
-from sklearn.metrics import roc_curve, auc, confusion_matrix, classification_report
+from sklearn.metrics import confusion_matrix, classification_report, precision_recall_curve
 from matplotlib import pyplot as plt
-
-VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
-COCO_JSON = "Validation/2 mili med blå bond.json"
-THRESHOLD_SCORE = 0.8
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -54,29 +50,30 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=THRESHOLD_SCORE):
+def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.8):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """
     roi_hist = compute_histogram(roi)
-    best_label = None
     best_score = float('inf')
 
-    for label, histograms in reference_histograms.items():
+    for histograms in reference_histograms.values():
         for ref_hist in histograms:
             score = cv2.compareHist(roi_hist, ref_hist, method)
             if score < best_score:
                 best_score = score
-                best_label = label
+    
+    # Reverse logic for Bhattacharyya distance: lower=better to higher=better and normalize to [0, 1]:
+    match_score = max(0.0, min(1.0, 1.0 - best_score))
 
     if best_score < threshold_score:
         print(f"Best score {best_score}")
-        print(f"Classification: {best_label}")
-        return best_label, best_score
+        print(f"Classification: Military")
+        return "Military", match_score
     else:
         print(f"No military match found. Best score: {best_score}")
         print(f"Classification: Civilian")
-        return "Civilian", best_score
+        return "Civilian", match_score
 
 # Validation and test
 
@@ -180,7 +177,12 @@ def show_video_with_annotations(video_path=VIDEO_PATH, json_path=COCO_JSON, id_o
     cv2.destroyAllWindows()
 
 def load_annotations(json_path=COCO_JSON):
-    """Load JSON and return dict: image_id -> annotations"""
+    """
+    Load JSON and return dict: image_id -> list of annotations for that frame.
+    Each annotation is expected to contain:
+    - "bbox": [x, y, w, h]
+    - "attributes": dict with class labels (e.g. "Military good": true/false).
+    """
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     frame_annotations = {}
@@ -206,9 +208,16 @@ def get_ground_truth_label(ann):
     # If nothing matched, treat as civilian.
     return 0 # fallback
 
-def collect_scores(video_path, frame_annotations, reference_histograms, threshold_score, id_offsets=(0,1)):
+def collect_scores(video_path, frame_annotations, reference_histograms, id_offsets=(0,1)):
+    """
+    Run a video frame by frame and classify persons in ROIs.
+    Returns:
+        ground_truth_labels -> 0 = Civilian, 1 = Military/HVT
+        match_scores        -> continuous scores for precision/recall curve
+        predicted_labels    -> binary predictions (0/1)
+    """
     cap = cv2.VideoCapture(video_path)
-    y_true, y_score, y_pred = [], [], []
+    ground_truth_labels, match_scores, predicted_labels = [], [], []
     frame_idx = 0
 
     while True:
@@ -229,72 +238,62 @@ def collect_scores(video_path, frame_annotations, reference_histograms, threshol
                 continue
 
             gt_label = get_ground_truth_label(ann)
-            y_true.append(gt_label)
+            ground_truth_labels.append(gt_label)
 
-            pred_label, match_score = classify_person(
-                roi,
-                reference_histograms,
-                threshold_score=threshold_score
-            )
+            pred_label, match_score = classify_person(roi, reference_histograms)
+            match_scores.append(match_score)
 
-            # ROC-score = match_score (uafhængig af threshold)
-            y_score.append(match_score)
-
-            # binær label afhænger af threshold
             if "Military" in pred_label or "HVT" in pred_label:
-                y_pred.append(1)
+                predicted_labels.append(1)
             else:
-                y_pred.append(0)
+                predicted_labels.append(0)
 
         frame_idx += 1
 
     cap.release()
-    return y_true, y_score, y_pred
+    return ground_truth_labels, match_scores, predicted_labels
 
-def plot_roc(y_true, y_score):
+def plot_precision_recall(ground_truth_labels, match_scores):
     """
-    Plot ROC-kurve og beregn AUC.
+    Plot Precision-Recall curve based on collected scores and ground truth labels.
     """
-    # Compute ROC curve and AUC
-    fpr, tpr, thresholds = roc_curve(y_true, y_score)
-    roc_auc = auc(fpr, tpr)
+    precision, recall, thresholds = precision_recall_curve(ground_truth_labels, match_scores)
 
-    # Plot
     plt.figure()
-    plt.plot(fpr, tpr, color='blue', lw=2,
-             label=f'ROC curve (AUC = {roc_auc:.2f})')
-    plt.plot([0, 1], [0, 1], color='gray', lw=2, linestyle='--')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC curve: Military/HVT vs Civilian')
-    plt.legend(loc="lower right")
+    plt.plot(recall, precision, color='blue', lw=2)
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall curve: Military vs Civilian")
     plt.show()
 
-def evaluate_classify_person(video_path, json_path, reference_path="Reference templates", threshold_score=0.8):
+def evaluate_classify_person(video_path, json_path, reference_path="Reference templates"):
     """
-    Total evaluation of the classification:
-    - Load reference histograms
-    - ROC curve
+    Evaluates the classication algorithm on a video with annotations.
+    Output:
     - Confusion matrix
-    - Classification report
+    - Classification report (precision, recall, f1-score)
+    - Precision-Recall curve
     """
-    # 1. Load reference histograms
+    # Load reference histograms and annotations
     reference_histograms = load_reference_histograms(reference_path)
-
-    # 2. Load annotations
     frame_annotations = load_annotations(json_path)
 
-    # 3. Collect scores and labels
-    y_true, y_score, y_pred = collect_scores(video_path, frame_annotations, reference_histograms, threshold_score)
+    # Collect scores
+    ground_truth_labels, match_scores, predicted_labels = collect_scores(video_path, frame_annotations, reference_histograms)
 
-    # 4. Plot ROC-kurve
-    plot_roc(y_true, y_score)
+    # Confusion matrix
+    print("\nConfusion Matrix:\n", confusion_matrix(ground_truth_labels, predicted_labels))
 
-    # 5. Confusion matrix
-    print("Confusion Matrix:\n", confusion_matrix(y_true, y_pred))
+    # Classification report
+    print("\nClassification Report:\n", classification_report(ground_truth_labels, predicted_labels))
 
-    # 6. Classification report
-    print("\nClassification Report:\n", classification_report(y_true, y_pred))
+    # Precision-Recall curve
+    plot_precision_recall(ground_truth_labels, match_scores)
+
 
 # Main
-evaluate_classify_person(VIDEO_PATH, COCO_JSON, threshold_score=0.9)
+VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
+COCO_JSON = "Validation/2 mili med blå bond.json"
+THRESHOLD_SCORE = 0.8
+
+evaluate_classify_person(VIDEO_PATH, COCO_JSON, reference_path="Reference templates")

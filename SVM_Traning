@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from sklearn import svm
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracmatch_score
 import joblib
 from tqdm import tqdm 
 
@@ -63,7 +63,7 @@ print("Training done.")
 
 # ---------------- EVALUATE ----------------
 y_pred = clf.predict(X_test)
-acc = accuracy_score(y_test, y_pred)
+acc = accuracmatch_score(y_test, y_pred)
 print(f"Test Accuracy: {acc*100:.2f}%")
 print(classification_report(y_test, y_pred, target_names=['Negative', 'Positive']))
 
