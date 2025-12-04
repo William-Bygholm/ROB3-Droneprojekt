@@ -31,7 +31,7 @@ def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio
         raise ValueError("Cropped region has zero size. Check the cropping parameters.")
     
     lab = cv2.cvtColor(cropped, cv2.COLOR_BGR2Lab)
-    hist = cv2.calcHist([lab], [1, 2], None, [50, 60], [0, 256, 0, 256])
+    hist = cv2.calcHist([lab], [2, 1], None, [60, 60], [0, 256, 0, 256])
     hist = cv2.normalize(hist, hist).astype("float32")
     return hist
 
