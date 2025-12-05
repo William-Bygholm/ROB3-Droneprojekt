@@ -27,12 +27,7 @@ total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 frame_id = 0
 start_time = time.time()
 
-all_data.append({
-    "frame": frame_id,
-    "features": [f.astype(np.float32) for f in feats],  # gem som liste
-    "boxes": boxes
-})
-
+all_data = []  # gemmer dicts med features og bokse per frame
 
 while True:
     ret,frame = cap.read()
@@ -56,9 +51,12 @@ while True:
             x2,y2 = int((x+WINDOW_SIZE[0])*sx), int((y+WINDOW_SIZE[1])*sy)
             boxes.append([x1,y1,x2,y2])
 
-    all_data.append({"frame":frame_id,
-                     "features":np.array(feats),
-                     "boxes":np.array(boxes)})
+    all_data.append({
+    "frame": frame_id,
+    "features": [f.astype(np.float32) for f in feats],  # gem som liste
+    "boxes": boxes
+})
+
 
     # Progress info
     elapsed = time.time()-start_time
