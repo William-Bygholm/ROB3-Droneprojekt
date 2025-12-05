@@ -2,204 +2,148 @@ import cv2
 import joblib
 import numpy as np
 import json
-import os
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from sklearn.metrics import precision_recall_curve, f1_score, auc
-import matplotlib.pyplot as plt
 
-# ---------------- USER CONFIG ----------------
-TEST_VIDEOS = [
-    {"video": r"ProjektVideoer/2 mili en idiot der ligger ned.MP4",
-     "annotations": r"Testing/2 mili og 1 idiot.json"},
-    {"video": r"ProjektVideoer/3 mili 2 onde 1 god.MP4",
-     "annotations": r"Testing/3mili 2 onde 1 god.json"},
-]
+# ---------------- CONFIG ----------------
+VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
+JSON_COCO = r"Validation/2 mili med blå bond.json"
+MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 
-MODEL_PATH = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Person_Detector_Json+YOLO.pkl"
-HOG_CACHE_DIR = r"C:\Users\ehage\OneDrive\HOG_cache"
-WINDOW_STRIDE = (8, 8)
-IOU_MATCH_THRESHOLD = 0.5
-WIN_W, WIN_H = 128, 256
-BLOCK_W, BLOCK_H = 32, 32
-STRIDE_W, STRIDE_H = 16, 16
-CELL_W, CELL_H = 8, 8
-NBINS = 9
-OUTPUT_PLOT = "precision_recall.png"
+SCALES = [1.25, 1, 0.8, 0.64]
+STEP_SIZES = {1.25: 24, 1: 24, 0.8: 20, 0.64: 16}
+NMS_THRESHOLD = 0.1
+FRAME_SKIP = 100
+WINDOW_SIZE = (128, 256)
+IOU_POSITIVE = 0.5
 
-os.makedirs(HOG_CACHE_DIR, exist_ok=True)
+# ---------------- LOAD MODEL ----------------
+model_data = joblib.load(MODEL_FILE)
+if isinstance(model_data, dict):
+    clf = model_data.get("classifier", model_data)
+    hog_params = model_data.get("hog_params", None)
+    if hog_params is not None:
+        WINDOW_SIZE = hog_params.get("winSize", (128, 256))
+else:
+    clf = model_data
+
+hog = cv2.HOGDescriptor(
+    _winSize=WINDOW_SIZE,
+    _blockSize=(32,32),
+    _blockStride=(16,16),
+    _cellSize=(8,8),
+    _nbins=9
+)
 
 # ---------------- HELPERS ----------------
-def load_annotations(json_path):
-    with open(json_path, "r") as f:
-        data = json.load(f)
-    ann = {}
-    image_id_to_frame = {img["id"]: idx + 1 for idx, img in enumerate(data["images"])}
-    for obj in data["annotations"]:
-        frame_id = image_id_to_frame[obj["image_id"]]
-        x, y, w, h = obj["bbox"]
-        ann.setdefault(frame_id, []).append((int(x), int(y), int(w), int(h)))
-    return ann
+def sliding_windows(img, step, win_size):
+    w, h = win_size
+    for y in range(0, img.shape[0]-h+1, step):
+        for x in range(0, img.shape[1]-w+1, step):
+            yield x, y, img[y:y+h, x:x+w]
 
-def iou_box_xywh(a, b):
-    ax1, ay1 = a[0], a[1]
-    ax2, ay2 = a[0] + a[2], a[1] + a[3]
-    bx1, by1 = b[0], b[1]
-    bx2, by2 = b[0] + b[2], b[1] + b[3]
+def nms_opencv(detections, scores, score_thresh, nms_thresh):
+    if len(detections) == 0:
+        return [], []
+    boxes_xywh = np.array([[x1, y1, x2-x1, y2-y1] for x1,y1,x2,y2 in detections], dtype=np.float32)
+    scores = np.array(scores, dtype=np.float32)
+    indices = cv2.dnn.NMSBoxes(boxes_xywh.tolist(), scores.tolist(), score_thresh, nms_thresh)
+    if len(indices) == 0:
+        return [], []
+    indices = indices.flatten()
+    return [detections[i] for i in indices], [scores[i] for i in indices]
 
-    ix1 = max(ax1, bx1)
-    iy1 = max(ay1, by1)
-    ix2 = min(ax2, bx2)
-    iy2 = min(ay2, by2)
-    iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
-    inter = iw * ih
-    if inter == 0:
-        return 0.0
-    area_a = a[2] * a[3]
-    area_b = b[2] * b[3]
-    return inter / float(area_a + area_b - inter)
+def iou(a, b):
+    x1 = max(a[0], b[0])
+    y1 = max(a[1], b[1])
+    x2 = min(a[2], b[2])
+    y2 = min(a[3], b[3])
+    inter = max(0, x2-x1) * max(0, y2-y1)
+    area_a = (a[2]-a[0]) * (a[3]-a[1])
+    area_b = (b[2]-b[0]) * (b[3]-b[1])
+    return inter / (area_a + area_b - inter + 1e-9)
 
-def compute_hog_descriptor(img):
-    hog = cv2.HOGDescriptor(
-        _winSize=(WIN_W, WIN_H),
-        _blockSize=(BLOCK_W, BLOCK_H),
-        _blockStride=(STRIDE_W, STRIDE_H),
-        _cellSize=(CELL_W, CELL_H),
-        _nbins=NBINS
-    )
-    desc = hog.compute(img)
-    return desc
+# ---------------- LOAD COCO JSON ----------------
+with open(JSON_COCO, "r") as f:
+    coco = json.load(f)
 
-def compute_and_save_hog(frame_idx, gray):
-    cache_file = os.path.join(HOG_CACHE_DIR, f"frame_{frame_idx:06d}.npz")
-    if os.path.exists(cache_file):
-        return cache_file  # already cached
-    desc = compute_hog_descriptor(gray)
-    np.savez_compressed(cache_file, desc=desc)
-    return cache_file
+image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
+frame_to_boxes = {}
+for ann in coco["annotations"]:
+    frame_id = image_id_to_frame.get(ann["image_id"])
+    if frame_id is None:
+        continue
+    x, y, w, h = ann["bbox"]
+    frame_to_boxes.setdefault(frame_id, []).append([int(x), int(y), int(x+w), int(y+h)])
 
-def load_hog_from_cache(frame_idx):
-    cache_file = os.path.join(HOG_CACHE_DIR, f"frame_{frame_idx:06d}.npz")
-    data = np.load(cache_file)
-    return data["desc"]
+coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
 
-# ---------------- EVALUATION ----------------
-def evaluate_video(video_path, annotation_path, clf):
-    ann = load_annotations(annotation_path)
-    cap = cv2.VideoCapture(video_path)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+# ---------------- VIDEO LOOP ----------------
+cap = cv2.VideoCapture(VIDEO_IN)
+frame_id = 0
 
-    all_scores = []
-    all_labels = []
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+    frame_id += 1
+    if frame_id % FRAME_SKIP != 0:
+        continue
 
-    frame_idx = 0
-    hog_compute_start = time.time()
-    print("=== Computing/loading HOG features ===")
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    h0, w0 = gray.shape[:2]
+    scale_x = w0 / coco_w
+    scale_y = h0 / coco_h
 
-    # Parallel HOG computation
-    futures = {}
-    with ThreadPoolExecutor() as executor:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
+    gt_boxes = frame_to_boxes.get(frame_id, [])
+    gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)]
+                       for x1,y1,x2,y2 in gt_boxes]
+
+    # ---------------- DETECTION ----------------
+    detections, scores = [], []
+    for scale in SCALES:
+        resized = cv2.resize(gray, None, fx=scale, fy=scale)
+        step = STEP_SIZES[scale]
+        scale_x_win = w0 / resized.shape[1]
+        scale_y_win = h0 / resized.shape[0]
+
+        for x, y, win in sliding_windows(resized, step, WINDOW_SIZE):
+            feat = hog.compute(win).ravel().reshape(1, -1)
+            score = clf.decision_function(feat)[0]
+            x1 = int(x * scale_x_win)
+            y1 = int(y * scale_y_win)
+            x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
+            y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
+            detections.append([x1, y1, x2, y2])
+            scores.append(score)
+
+    nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
+
+    # ---------------- CLASSIFY TP/FP/FN ----------------
+    matched_gt = set()
+    for det in nms_boxes:
+        match = False
+        for i, gt in enumerate(gt_boxes_scaled):
+            if i in matched_gt:
+                continue
+            if iou(det, gt) > IOU_POSITIVE:
+                match = True
+                matched_gt.add(i)
                 break
-            frame_idx += 1
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            futures[executor.submit(compute_and_save_hog, frame_idx, gray)] = frame_idx
+        color = (0,255,0) if match else (0,0,255)  # Grøn=TP, Rød=FP
+        cv2.rectangle(frame, (det[0], det[1]), (det[2], det[3]), color, 2)
 
-    cap.release()
-    hog_compute_end = time.time()
-    print(f"HOG feature computation done: {hog_compute_end - hog_compute_start:.1f}s total")
+    # Tegn FN (gt ikke matchet)
+    for i, gt in enumerate(gt_boxes_scaled):
+        if i not in matched_gt:
+            cv2.rectangle(frame, (gt[0], gt[1]), (gt[2], gt[3]), (255,0,0), 2)  # Blå=FN
 
-    # Now do detection using cached features
-    print("=== Running detection using cached HOG ===")
-    cap = cv2.VideoCapture(video_path)
-    frame_idx = 0
-    detection_start = time.time()
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frame_idx += 1
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        desc = load_hog_from_cache(frame_idx)
-        # classify entire frame as one big window for simplicity here
-        score = clf.decision_function(desc.reshape(1, -1))[0]
+    # Tegn alle GT (valgfrit)
+    for gt in gt_boxes_scaled:
+        cv2.rectangle(frame, (gt[0], gt[1]), (gt[2], gt[3]), (255,255,255), 1)  # Hvid=GT ramme
 
-        # assign labels based on IoU with all ground truths in this frame
-        gt_boxes = ann.get(frame_idx, [])
-        label = 0
-        # here we just assume single window same size as frame
-        frame_box = (0, 0, gray.shape[1], gray.shape[0])
-        for gt in gt_boxes:
-            if iou_box_xywh(frame_box, gt) >= IOU_MATCH_THRESHOLD:
-                label = 1
-                break
-        all_scores.append(float(score))
-        all_labels.append(int(label))
+    cv2.imshow("Detections", frame)
+    key = cv2.waitKey(1)
+    if key == 27:  # ESC for at lukke
+        break
 
-        if frame_idx % 10 == 0 or frame_idx == total_frames:
-            elapsed = time.time() - detection_start
-            print(f"Processed {frame_idx}/{total_frames} frames | elapsed {elapsed:.1f}s", end="\r")
-
-    cap.release()
-    detection_end = time.time()
-    print(f"\nDetection done: {detection_end - detection_start:.1f}s total")
-
-    return np.array(all_scores), np.array(all_labels), hog_compute_end - hog_compute_start, detection_end - detection_start
-
-# ---------------- MAIN ----------------
-if __name__ == "__main__":
-    print("Loading model...")
-    model = joblib.load(MODEL_PATH)
-    if isinstance(model, dict):
-        clf = model["classifier"]
-    else:
-        clf = model
-
-    all_scores = []
-    all_labels = []
-
-    for entry in TEST_VIDEOS:
-        video = entry["video"]
-        ann = entry["annotations"]
-        print(f"\n=== Evaluating {video} ===")
-        s, l, t_hog, t_detect = evaluate_video(video, ann, clf)
-        all_scores.append(s)
-        all_labels.append(l)
-        print(f"Time to compute HOG: {t_hog:.1f}s | Time for detection: {t_detect:.1f}s")
-
-    scores = np.concatenate(all_scores)
-    labels = np.concatenate(all_labels)
-
-    # compute PR curve
-    prec, rec, thresholds = precision_recall_curve(labels, scores)
-    pr_auc = auc(rec, prec)
-    f1s = (2 * prec * rec) / (prec + rec + 1e-12)
-    best_idx = int(np.nanargmax(f1s))
-    best_thr = thresholds[best_idx] if best_idx < len(thresholds) else thresholds[-1]
-    best_pred = (scores >= best_thr).astype(int)
-    best_f1 = f1_score(labels, best_pred)
-    tp = int(np.sum((best_pred == 1) & (labels == 1)))
-    fp = int(np.sum((best_pred == 1) & (labels == 0)))
-    fn = int(np.sum((best_pred == 0) & (labels == 1)))
-
-    print("\n----- RESULTS -----")
-    print(f"PR AUC   : {pr_auc:.4f}")
-    print(f"Best F1  : {best_f1:.4f}")
-    print(f"Best Thr : {best_thr:.4f}")
-    print(f"TP={tp}, FP={fp}, FN={fn}")
-    print("-------------------")
-
-    # save PR curve
-    plt.figure()
-    plt.plot(rec, prec, linewidth=1)
-    plt.scatter([rec[best_idx]], [prec[best_idx]], s=60, label=f"best F1={best_f1:.3f} thr={best_thr:.3f}")
-    plt.xlabel("Recall")
-    plt.ylabel("Precision")
-    plt.title(f"Precision-Recall (AUC={pr_auc:.4f})")
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(OUTPUT_PLOT, dpi=150)
-    plt.close()
-    print(f"Saved PR curve to {OUTPUT_PLOT}")
+cap.release()
+cv2.destroyAllWindows()
