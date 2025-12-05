@@ -9,7 +9,7 @@ SCALES = [1.2, 1.0, 0.8, 0.64]
 STEP_SIZES = {1.2: 36, 1.0: 32, 0.8: 28, 0.64: 24}
 WINDOW_SIZE = (128, 256)
 FRAME_SKIP = 2
-CHUNK_SIZE = 100   # antal frames per batch
+CHUNK_SIZE = 50
 
 # Load model
 model_data = joblib.load(MODEL_FILE)
