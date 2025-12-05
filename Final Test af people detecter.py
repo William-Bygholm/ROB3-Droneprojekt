@@ -2,222 +2,204 @@ import cv2
 import joblib
 import numpy as np
 import json
-import time
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from sklearn.metrics import precision_recall_curve, f1_score, auc
 import matplotlib.pyplot as plt
-import csv
-from sklearn.metrics import precision_recall_curve, auc
 
 # ---------------- USER CONFIG ----------------
-DATASETS = [
-    {
-        "video": r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned.MP4",
-        "coco_json": r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json"
-    },
-    {
-        "video": r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
-        "coco_json": r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
-    }
+TEST_VIDEOS = [
+    {"video": r"ProjektVideoer/2 mili en idiot der ligger ned.MP4",
+     "annotations": r"Testing/2 mili og 1 idiot.json"},
+    {"video": r"ProjektVideoer/3 mili 2 onde 1 god.MP4",
+     "annotations": r"Testing/3mili 2 onde 1 god.json"},
 ]
 
 MODEL_PATH = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\Person_Detector_Json+YOLO.pkl"
-OUTPUT_DIR = r"C:\Users\ehage\OneDrive\Skrivebord\Drone Projekt ROB3\ROB3-Droneprojekt\test_plots_excel_1"
+HOG_CACHE_DIR = r"C:\Users\ehage\OneDrive\HOG_cache"
+WINDOW_STRIDE = (8, 8)
+IOU_MATCH_THRESHOLD = 0.5
+WIN_W, WIN_H = 128, 256
+BLOCK_W, BLOCK_H = 32, 32
+STRIDE_W, STRIDE_H = 16, 16
+CELL_W, CELL_H = 8, 8
+NBINS = 9
+OUTPUT_PLOT = "precision_recall.png"
 
-WINDOW_SIZE = (128, 256)
-DETECTION_STEP = 16
-CONF_THRESHOLD = 0.0
-IOU_THRESHOLD = 0.5
-USE_NMS = True
-NMS_IOU = 0.4
+os.makedirs(HOG_CACHE_DIR, exist_ok=True)
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-# ---------------- HELPER FUNCTIONS ----------------
-def load_coco_annotations(json_path):
+# ---------------- HELPERS ----------------
+def load_annotations(json_path):
     with open(json_path, "r") as f:
-        coco = json.load(f)
+        data = json.load(f)
+    ann = {}
+    image_id_to_frame = {img["id"]: idx + 1 for idx, img in enumerate(data["images"])}
+    for obj in data["annotations"]:
+        frame_id = image_id_to_frame[obj["image_id"]]
+        x, y, w, h = obj["bbox"]
+        ann.setdefault(frame_id, []).append((int(x), int(y), int(w), int(h)))
+    return ann
 
-    images = {img["id"]: img for img in coco["images"]}
-    anns_by_image = {img_id: [] for img_id in images.keys()}
+def iou_box_xywh(a, b):
+    ax1, ay1 = a[0], a[1]
+    ax2, ay2 = a[0] + a[2], a[1] + a[3]
+    bx1, by1 = b[0], b[1]
+    bx2, by2 = b[0] + b[2], b[1] + b[3]
 
-    for ann in coco.get("annotations", []):
-        anns_by_image[ann["image_id"]].append(ann["bbox"])
+    ix1 = max(ax1, bx1)
+    iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
+    iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
+    inter = iw * ih
+    if inter == 0:
+        return 0.0
+    area_a = a[2] * a[3]
+    area_b = b[2] * b[3]
+    return inter / float(area_a + area_b - inter)
 
-    return images, anns_by_image
-
-
-def iou(boxA, boxB):
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
-    yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
-
-    inter = max(0, xB - xA) * max(0, yB - yA)
-    union = boxA[2] * boxA[3] + boxB[2] * boxB[3] - inter
-
-    return inter / union if union > 0 else 0
-
-
-def nms(detections, iou_thr):
-    if len(detections) == 0:
-        return []
-
-    dets = sorted(detections, key=lambda d: d["score"], reverse=True)
-    keep = []
-
-    while dets:
-        best = dets.pop(0)
-        keep.append(best)
-
-        dets = [
-            d for d in dets
-            if iou(best["bbox"], d["bbox"]) < iou_thr
-        ]
-
-    return keep
-
-
-def match_detections(dets, gts, iou_thr):
-    matched_gt = set()
-    TP_scores, FP_scores = [], []
-
-    for det in dets:
-        best_iou = 0
-        best_gt_idx = None
-
-        for i, gt in enumerate(gts):
-            if i in matched_gt:
-                continue
-
-            iou_val = iou(det["bbox"], gt)
-            if iou_val > best_iou:
-                best_iou = iou_val
-                best_gt_idx = i
-
-        if best_iou >= iou_thr:
-            matched_gt.add(best_gt_idx)
-            TP_scores.append(det["score"])
-        else:
-            FP_scores.append(det["score"])
-
-    FN_count = len(gts) - len(matched_gt)
-    return TP_scores, FP_scores, FN_count
-
-
-# ---------------- MAIN PROGRAM ----------------
-def main():
-    # Load model
-    model_data = joblib.load(MODEL_PATH)
-    clf = model_data.get("classifier", model_data) if isinstance(model_data, dict) else model_data
-
-    # Pre-create HOG descriptor (ikke hver frame)
+def compute_hog_descriptor(img):
     hog = cv2.HOGDescriptor(
-        _winSize=WINDOW_SIZE,
-        _blockSize=(32, 32),
-        _blockStride=(16, 16),
-        _cellSize=(8, 8),
-        _nbins=9
+        _winSize=(WIN_W, WIN_H),
+        _blockSize=(BLOCK_W, BLOCK_H),
+        _blockStride=(STRIDE_W, STRIDE_H),
+        _cellSize=(CELL_W, CELL_H),
+        _nbins=NBINS
     )
+    desc = hog.compute(img)
+    return desc
 
-    # Stats
-    all_TP, all_FP = [], []
-    total_FN = 0
+def compute_and_save_hog(frame_idx, gray):
+    cache_file = os.path.join(HOG_CACHE_DIR, f"frame_{frame_idx:06d}.npz")
+    if os.path.exists(cache_file):
+        return cache_file  # already cached
+    desc = compute_hog_descriptor(gray)
+    np.savez_compressed(cache_file, desc=desc)
+    return cache_file
 
-    total_frames_all = sum(int(cv2.VideoCapture(ds["video"]).get(cv2.CAP_PROP_FRAME_COUNT)) for ds in DATASETS)
-    processed_frames = 0
-    start_time_total = time.time()
+def load_hog_from_cache(frame_idx):
+    cache_file = os.path.join(HOG_CACHE_DIR, f"frame_{frame_idx:06d}.npz")
+    data = np.load(cache_file)
+    return data["desc"]
 
-    for dataset in DATASETS:
-        video_path = dataset["video"]
-        coco_path = dataset["coco_json"]
+# ---------------- EVALUATION ----------------
+def evaluate_video(video_path, annotation_path, clf):
+    ann = load_annotations(annotation_path)
+    cap = cv2.VideoCapture(video_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
-        images, anns_by_image = load_coco_annotations(coco_path)
+    all_scores = []
+    all_labels = []
 
-        # Map COCO image filenames → frame index
-        frame_map = {img["file_name"]: img_id for img_id, img in images.items()}
+    frame_idx = 0
+    hog_compute_start = time.time()
+    print("=== Computing/loading HOG features ===")
 
-        cap = cv2.VideoCapture(video_path)
-        frame_idx = 0
-
+    # Parallel HOG computation
+    futures = {}
+    with ThreadPoolExecutor() as executor:
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
-
             frame_idx += 1
-            processed_frames += 1
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            futures[executor.submit(compute_and_save_hog, frame_idx, gray)] = frame_idx
 
-            # COCO uses filenames, not frame numbers
-            filename = f"{frame_idx}.jpg"
-            if filename not in frame_map:
-                continue
+    cap.release()
+    hog_compute_end = time.time()
+    print(f"HOG feature computation done: {hog_compute_end - hog_compute_start:.1f}s total")
 
-            img_id = frame_map[filename]
-            gts = anns_by_image[img_id]
+    # Now do detection using cached features
+    print("=== Running detection using cached HOG ===")
+    cap = cv2.VideoCapture(video_path)
+    frame_idx = 0
+    detection_start = time.time()
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame_idx += 1
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        desc = load_hog_from_cache(frame_idx)
+        # classify entire frame as one big window for simplicity here
+        score = clf.decision_function(desc.reshape(1, -1))[0]
 
-            # Precompute grayscale
-            gray_full = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # assign labels based on IoU with all ground truths in this frame
+        gt_boxes = ann.get(frame_idx, [])
+        label = 0
+        # here we just assume single window same size as frame
+        frame_box = (0, 0, gray.shape[1], gray.shape[0])
+        for gt in gt_boxes:
+            if iou_box_xywh(frame_box, gt) >= IOU_MATCH_THRESHOLD:
+                label = 1
+                break
+        all_scores.append(float(score))
+        all_labels.append(int(label))
 
-            detections = []
-            H, W = gray_full.shape
+        if frame_idx % 10 == 0 or frame_idx == total_frames:
+            elapsed = time.time() - detection_start
+            print(f"Processed {frame_idx}/{total_frames} frames | elapsed {elapsed:.1f}s", end="\r")
 
-            for y in range(0, H - WINDOW_SIZE[1], DETECTION_STEP):
-                for x in range(0, W - WINDOW_SIZE[0], DETECTION_STEP):
-                    patch = gray_full[y:y + WINDOW_SIZE[1], x:x + WINDOW_SIZE[0]]
-                    feat = hog.compute(patch).reshape(1, -1)
-                    score = clf.decision_function(feat)[0]
+    cap.release()
+    detection_end = time.time()
+    print(f"\nDetection done: {detection_end - detection_start:.1f}s total")
 
-                    if score >= CONF_THRESHOLD:
-                        detections.append({"bbox": [x, y, WINDOW_SIZE[0], WINDOW_SIZE[1]], "score": score})
+    return np.array(all_scores), np.array(all_labels), hog_compute_end - hog_compute_start, detection_end - detection_start
 
-            if USE_NMS:
-                detections = nms(detections, NMS_IOU)
+# ---------------- MAIN ----------------
+if __name__ == "__main__":
+    print("Loading model...")
+    model = joblib.load(MODEL_PATH)
+    if isinstance(model, dict):
+        clf = model["classifier"]
+    else:
+        clf = model
 
-            TP_scores, FP_scores, FN_count = match_detections(detections, gts, IOU_THRESHOLD)
+    all_scores = []
+    all_labels = []
 
-            all_TP.extend(TP_scores)
-            all_FP.extend(FP_scores)
-            total_FN += FN_count
+    for entry in TEST_VIDEOS:
+        video = entry["video"]
+        ann = entry["annotations"]
+        print(f"\n=== Evaluating {video} ===")
+        s, l, t_hog, t_detect = evaluate_video(video, ann, clf)
+        all_scores.append(s)
+        all_labels.append(l)
+        print(f"Time to compute HOG: {t_hog:.1f}s | Time for detection: {t_detect:.1f}s")
 
-            # Progress print
-            if processed_frames % 100 == 0:
-                elapsed = time.time() - start_time_total
-                pct = processed_frames / total_frames_all
-                eta = elapsed / pct - elapsed
-                print(f"\n{processed_frames}/{total_frames_all} frames ({pct*100:.1f}%)")
-                print(f"Elapsed: {int(elapsed)}s, Remaining: {int(eta)}s")
-                print(f"TP={len(all_TP)}, FP={len(all_FP)}, FN={total_FN}")
+    scores = np.concatenate(all_scores)
+    labels = np.concatenate(all_labels)
 
-        cap.release()
+    # compute PR curve
+    prec, rec, thresholds = precision_recall_curve(labels, scores)
+    pr_auc = auc(rec, prec)
+    f1s = (2 * prec * rec) / (prec + rec + 1e-12)
+    best_idx = int(np.nanargmax(f1s))
+    best_thr = thresholds[best_idx] if best_idx < len(thresholds) else thresholds[-1]
+    best_pred = (scores >= best_thr).astype(int)
+    best_f1 = f1_score(labels, best_pred)
+    tp = int(np.sum((best_pred == 1) & (labels == 1)))
+    fp = int(np.sum((best_pred == 1) & (labels == 0)))
+    fn = int(np.sum((best_pred == 0) & (labels == 1)))
 
-    print("\nTesting complete.")
+    print("\n----- RESULTS -----")
+    print(f"PR AUC   : {pr_auc:.4f}")
+    print(f"Best F1  : {best_f1:.4f}")
+    print(f"Best Thr : {best_thr:.4f}")
+    print(f"TP={tp}, FP={fp}, FN={fn}")
+    print("-------------------")
 
-    # ---------------- METRICS ----------------
-    y_scores = np.array(all_TP + all_FP)
-    y_true = np.array([1] * len(all_TP) + [0] * len(all_FP))
-
-    precision, recall, thresholds = precision_recall_curve(y_true, y_scores)
-    pr_auc = auc(recall, precision)
-
-    # Save plot
+    # save PR curve
     plt.figure()
-    plt.plot(recall, precision)
+    plt.plot(rec, prec, linewidth=1)
+    plt.scatter([rec[best_idx]], [prec[best_idx]], s=60, label=f"best F1={best_f1:.3f} thr={best_thr:.3f}")
     plt.xlabel("Recall")
     plt.ylabel("Precision")
-    plt.title(f"Merged Precision-Recall Curve (AUC={pr_auc:.3f})")
-    plt.grid()
-    plt.savefig(os.path.join(OUTPUT_DIR, "PR_Curve.png"))
-
-    # Save CSV
-    with open(os.path.join(OUTPUT_DIR, "PR_data.csv"), "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["precision", "recall", "threshold"])
-        for p, r, t in zip(precision, recall, np.append(thresholds, np.nan)):
-            writer.writerow([p, r, t])
-
-    print(f"AUC: {pr_auc:.4f}")
-    print(f"TP={len(all_TP)}, FP={len(all_FP)}, FN={total_FN}")
-
-
-if __name__ == "__main__":
-    main()
+    plt.title(f"Precision-Recall (AUC={pr_auc:.4f})")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(OUTPUT_PLOT, dpi=150)
+    plt.close()
+    print(f"Saved PR curve to {OUTPUT_PLOT}")
