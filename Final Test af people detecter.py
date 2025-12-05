@@ -2,16 +2,24 @@ import cv2
 import joblib
 import numpy as np
 import json
+import time
 
-# ---------------- CONFIG ----------------
-VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
-JSON_COCO = r"Validation/2 mili med blå bond.json"
+# ---------------- USER CONFIG ----------------
+VIDEOS = [
+    r"ProjektVideoer/2 mili en idiot der ligger ned.MP4",
+    r"ProjektVideoer/3 mili 2 onde 1 god.MP4"
+]
+JSON_FILES = [
+    r"Testing/2 mili og 1 idiot.json",
+    r"Testing/3mili 2 onde 1 god.json"
+]
 MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
+BEST_THRESHOLD = 1  # indsæt dit valgte threshold her
 
 SCALES = [1.25, 1, 0.8, 0.64]
 STEP_SIZES = {1.25: 24, 1: 24, 0.8: 20, 0.64: 16}
 NMS_THRESHOLD = 0.05
-FRAME_SKIP = 100
+FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
 
@@ -98,102 +106,114 @@ def iou(a, b):
     area_b = (b[2]-b[0])*(b[3]-b[1])
     return inter / (area_a + area_b - inter + 1e-9)
 
-# ---------------- LOAD COCO JSON ----------------
-with open(JSON_COCO, "r") as f:
-    coco = json.load(f)
+# ---------------- FINAL TEST ----------------
+tp_total, fp_total, fn_total = 0, 0, 0
+start_time = time.time()
+total_frames = 0
 
-image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
-frame_to_boxes = {}
-for ann in coco["annotations"]:
-    frame_id = image_id_to_frame.get(ann["image_id"])
-    if frame_id is None:
-        continue
-    x, y, w, h = ann["bbox"]
-    frame_to_boxes.setdefault(frame_id, []).append([int(x), int(y), int(x+w), int(y+h)])
+# Beregn antal frames til estimeret tid (med FRAME_SKIP)
+for vid in VIDEOS:
+    cap = cv2.VideoCapture(vid)
+    total_frames += int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) // FRAME_SKIP
+    cap.release()
 
-coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
+processed_frames = 0
 
-# ---------------- FRAME-BY-FRAME LOOP ----------------
-cap = cv2.VideoCapture(VIDEO_IN)
-total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-frame_id = 0
-scale_show = 0.5  # mindre vindue
+for vid, json_file in zip(VIDEOS, JSON_FILES):
+    with open(json_file, "r") as f:
+        coco = json.load(f)
+    image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
+    frame_to_boxes = {}
+    for ann in coco["annotations"]:
+        frame_id = image_id_to_frame.get(ann["image_id"])
+        if frame_id is None:
+            continue
+        x, y, w, h = ann["bbox"]
+        frame_to_boxes.setdefault(frame_id, []).append([int(x), int(y), int(x+w), int(y+h)])
+    coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
 
-while frame_id < total_frames:
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
-    ret, frame = cap.read()
-    if not ret:
-        break
+    cap = cv2.VideoCapture(vid)
+    frame_id = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame_id += 1
+        # FRAME_SKIP logik: spring frames over
+        if (frame_id - 1) % FRAME_SKIP != 0:
+            continue
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    h0, w0 = gray.shape[:2]
-    scale_x = w0 / coco_w
-    scale_y = h0 / coco_h
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        h0, w0 = gray.shape[:2]
+        scale_x = w0 / coco_w
+        scale_y = h0 / coco_h
+        gt_boxes = frame_to_boxes.get(frame_id, [])
+        gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)]
+                           for x1,y1,x2,y2 in gt_boxes]
 
-    gt_boxes = frame_to_boxes.get(frame_id+1, [])
-    gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)]
-                       for x1,y1,x2,y2 in gt_boxes]
+        detections, scores = [], []
+        for scale in SCALES:
+            resized = cv2.resize(gray, None, fx=scale, fy=scale)
+            step = STEP_SIZES[scale]
+            scale_x_win = w0 / resized.shape[1]
+            scale_y_win = h0 / resized.shape[0]
+            windows = list(sliding_windows(resized, step, WINDOW_SIZE))
+            feats = [hog.compute(win).ravel() for _,_,win in windows]
+            if feats:
+                scores_batch = clf.decision_function(feats)
+                for (x, y, _), score in zip(windows, scores_batch):
+                    x1 = int(x * scale_x_win)
+                    y1 = int(y * scale_y_win)
+                    x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
+                    y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
+                    detections.append([x1, y1, x2, y2])
+                    scores.append(score)
 
-    # ---------------- DETECTION ----------------
-    detections, scores = [], []
-    for scale in SCALES:
-        resized = cv2.resize(gray, None, fx=scale, fy=scale)
-        step = STEP_SIZES[scale]
-        scale_x_win = w0 / resized.shape[1]
-        scale_y_win = h0 / resized.shape[0]
+        nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
+        final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
 
-        for x, y, win in sliding_windows(resized, step, WINDOW_SIZE):
-            feat = hog.compute(win).ravel().reshape(1, -1)
-            score = clf.decision_function(feat)[0]
-            x1 = int(x * scale_x_win)
-            y1 = int(y * scale_y_win)
-            x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
-            y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
-            detections.append([x1, y1, x2, y2])
-            scores.append(score)
+        # ---------------- TP/FP/FN ----------------
+        matched_gt = [False]*len(gt_boxes_scaled)
+        matched_det = [False]*len(final_boxes)
 
-    # NMS + Merge som i dit originale program
-    nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
-    final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
-
-    # ---------------- VISUAL TP/FP/FN ----------------
-    matched_gt = set()
-    for box, score in zip(final_boxes, final_scores):
-        match = False
+        # Match TP
         for i, gt in enumerate(gt_boxes_scaled):
-            if i in matched_gt:
-                continue
-            if iou(box, gt) > IOU_POSITIVE:
-                match = True
-                matched_gt.add(i)
-                break
-        color = (0,255,0) if match else (0,0,255)  # Grøn=TP, Rød=FP
-        label = "TP" if match else "FP"
-        cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), color, 2)
-        cv2.putText(frame, label, (box[0], box[1]-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            for j, (box, score) in enumerate(zip(final_boxes, final_scores)):
+                if score >= BEST_THRESHOLD and iou(box, gt) > IOU_POSITIVE and not matched_det[j]:
+                    matched_gt[i] = True
+                    matched_det[j] = True
+                    break
 
-    for i, gt in enumerate(gt_boxes_scaled):
-        if i not in matched_gt:
-            color = (255,0,0)  # Blå=FN
-            cv2.rectangle(frame, (gt[0], gt[1]), (gt[2], gt[3]), color, 2)
-            cv2.putText(frame, "FN", (gt[0], gt[1]-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        # TP/FN
+        for m in matched_gt:
+            if m:
+                tp_total += 1
+            else:
+                fn_total += 1
 
-    for gt in gt_boxes_scaled:
-        cv2.rectangle(frame, (gt[0], gt[1]), (gt[2], gt[3]), (255,255,255), 1)
-        cv2.putText(frame, "GT", (gt[0], gt[3]+12), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,255), 1)
+        # FP
+        for j, score in enumerate(final_scores):
+            if score >= BEST_THRESHOLD and not matched_det[j]:
+                fp_total += 1
 
-    # ---------------- VISUALIZE SMALL WINDOW ----------------
-    frame_small = cv2.resize(frame, (0,0), fx=scale_show, fy=scale_show)
-    cv2.imshow("Detections", frame_small)
-    print(f"Frame {frame_id+1}/{total_frames}. Tryk 'n' for næste, ESC for at lukke.")
+        # Print tid + TP/FP/FN
+        processed_frames += 1
+        elapsed = time.time() - start_time
+        progress = processed_frames / total_frames
+        if progress > 0:
+            est_total = elapsed / progress
+            remaining = est_total - elapsed
+            print(f"Processed frame {processed_frames}/{total_frames} "
+                  f"({progress*100:.2f}%), Elapsed: {elapsed:.1f}s, Remaining: {remaining:.1f}s | "
+                  f"TP: {tp_total}, FP: {fp_total}, FN: {fn_total}", end="\r")
 
-    key = cv2.waitKey(0)
-    if key == 27:  # ESC
-        break
-    elif key == ord('n'):
-        frame_id += FRAME_SKIP
-    else:
-        frame_id += 1  # anden tast → næste frame
+    cap.release()
 
-cap.release()
-cv2.destroyAllWindows()
+# ---------------- METRICS ----------------
+precision = tp_total / (tp_total+fp_total) if (tp_total+fp_total) > 0 else 0
+recall = tp_total / (tp_total+fn_total) if (tp_total+fn_total) > 0 else 0
+f1 = 2*precision*recall / (precision+recall) if (precision+recall) > 0 else 0
+
+print(f"\nFINAL TEST RESULTS:")
+print(f"TP: {tp_total}, FP: {fp_total}, FN: {fn_total}")
+print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-score: {f1:.4f}")
