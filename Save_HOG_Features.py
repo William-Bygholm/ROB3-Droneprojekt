@@ -55,7 +55,7 @@ while True:
     "frame": frame_id,
     "features": [f.astype(np.float32) for f in feats],  # gem som liste
     "boxes": boxes
-})
+    })
 
 
     # Progress info
