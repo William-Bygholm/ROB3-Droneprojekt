@@ -9,19 +9,24 @@ VIDEOS = [
     r"ProjektVideoer/2 mili en idiot der ligger ned.MP4",
     r"ProjektVideoer/3 mili 2 onde 1 god.MP4"
 ]
-JSON_FILES = [
+
+JSONS = [
     r"Testing/2 mili og 1 idiot.json",
     r"Testing/3mili 2 onde 1 god.json"
 ]
-MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
-BEST_THRESHOLD = 1  # indsæt dit valgte threshold her
 
-SCALES = [1.25, 1, 0.8, 0.64]
-STEP_SIZES = {1.25: 24, 1: 24, 0.8: 20, 0.64: 16}
+MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
+
+SCALES = [1.2, 1, 0.8, 0.64]
+STEP_SIZES = {1.2: 36, 1: 34, 0.8: 28, 0.64: 24}
 NMS_THRESHOLD = 0.05
 FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.5
+
+# ✅ FAST THRESHOLD
+THRESHOLD = -0.25
+
 
 # ---------------- LOAD MODEL ----------------
 print("Loading model...")
@@ -31,10 +36,8 @@ if isinstance(model_data, dict):
     hog_params = model_data.get("hog_params", None)
     if hog_params is not None:
         WINDOW_SIZE = hog_params.get("winSize", (128, 256))
-        print(f"Loaded model with custom HOG params: {WINDOW_SIZE}")
 else:
     clf = model_data
-    print("Loaded SVM directly.")
 
 hog = cv2.HOGDescriptor(
     _winSize=WINDOW_SIZE,
@@ -44,6 +47,7 @@ hog = cv2.HOGDescriptor(
     _nbins=9
 )
 
+
 # ---------------- HELPERS ----------------
 def sliding_windows(img, step, win_size):
     w, h = win_size
@@ -51,16 +55,18 @@ def sliding_windows(img, step, win_size):
         for x in range(0, img.shape[1]-w+1, step):
             yield x, y, img[y:y+h, x:x+w]
 
+
 def nms_opencv(detections, scores, score_thresh, nms_thresh):
     if len(detections) == 0:
         return [], []
     boxes_xywh = np.array([[x1, y1, x2-x1, y2-y1] for x1,y1,x2,y2 in detections], dtype=np.float32)
     scores = np.array(scores, dtype=np.float32)
-    indices = cv2.dnn.NMSBoxes(boxes_xywh.tolist(), scores.tolist(), score_thresh, nms_thresh)
-    if len(indices) == 0:
+    idx = cv2.dnn.NMSBoxes(boxes_xywh.tolist(), scores.tolist(), score_thresh, nms_thresh)
+    if len(idx) == 0:
         return [], []
-    indices = indices.flatten()
-    return [detections[i] for i in indices], [scores[i] for i in indices]
+    idx = idx.flatten()
+    return [detections[i] for i in idx], [scores[i] for i in idx]
+
 
 def merge_close_boxes(boxes, scores, iou_threshold=0.2):
     if len(boxes) == 0:
@@ -91,10 +97,10 @@ def merge_close_boxes(boxes, scores, iou_threshold=0.2):
         boxes = boxes[mask]
         scores = scores[mask]
     if keep:
-        final_boxes, final_scores = zip(*keep)
-    else:
-        final_boxes, final_scores = [], []
-    return list(final_boxes), list(final_scores)
+        b, s = zip(*keep)
+        return list(b), list(s)
+    return [], []
+
 
 def iou(a, b):
     x1 = max(a[0], b[0])
@@ -106,114 +112,159 @@ def iou(a, b):
     area_b = (b[2]-b[0])*(b[3]-b[1])
     return inter / (area_a + area_b - inter + 1e-9)
 
-# ---------------- FINAL TEST ----------------
-tp_total, fp_total, fn_total = 0, 0, 0
-start_time = time.time()
-total_frames = 0
 
-# Beregn antal frames til estimeret tid (med FRAME_SKIP)
-for vid in VIDEOS:
-    cap = cv2.VideoCapture(vid)
-    total_frames += int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) // FRAME_SKIP
-    cap.release()
+# ---------------- PROCESS ONE VIDEO+JSON ----------------
+def process_pair(video_path, json_path):
+    print(f"\nProcessing: {video_path}")
 
-processed_frames = 0
-
-for vid, json_file in zip(VIDEOS, JSON_FILES):
-    with open(json_file, "r") as f:
+    with open(json_path, "r") as f:
         coco = json.load(f)
+
     image_id_to_frame = {img["id"]: idx+1 for idx, img in enumerate(coco["images"])}
     frame_to_boxes = {}
     for ann in coco["annotations"]:
-        frame_id = image_id_to_frame.get(ann["image_id"])
-        if frame_id is None:
+        fid = image_id_to_frame.get(ann["image_id"])
+        if fid is None:
             continue
         x, y, w, h = ann["bbox"]
-        frame_to_boxes.setdefault(frame_id, []).append([int(x), int(y), int(x+w), int(y+h)])
+        frame_to_boxes.setdefault(fid, []).append([int(x), int(y), int(x+w), int(y+h)])
+
     coco_w, coco_h = coco["images"][0]["width"], coco["images"][0]["height"]
 
-    cap = cv2.VideoCapture(vid)
+    scores_all, labels_all = [], []
+
+    cap = cv2.VideoCapture(video_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_id = 0
+
+    start_time = time.time()
+
+    running_tp = 0
+    running_fp = 0
+    running_fn = 0
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
         frame_id += 1
-        # FRAME_SKIP logik: spring frames over
-        if (frame_id - 1) % FRAME_SKIP != 0:
+        if frame_id % FRAME_SKIP != 0:
             continue
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         h0, w0 = gray.shape[:2]
         scale_x = w0 / coco_w
         scale_y = h0 / coco_h
+
         gt_boxes = frame_to_boxes.get(frame_id, [])
-        gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)]
-                           for x1,y1,x2,y2 in gt_boxes]
+        gt_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)]
+                     for x1,y1,x2,y2 in gt_boxes]
 
         detections, scores = [], []
+
         for scale in SCALES:
             resized = cv2.resize(gray, None, fx=scale, fy=scale)
             step = STEP_SIZES[scale]
-            scale_x_win = w0 / resized.shape[1]
-            scale_y_win = h0 / resized.shape[0]
+            sx = w0 / resized.shape[1]
+            sy = h0 / resized.shape[0]
+
             windows = list(sliding_windows(resized, step, WINDOW_SIZE))
             feats = [hog.compute(win).ravel() for _,_,win in windows]
+
             if feats:
                 scores_batch = clf.decision_function(feats)
-                for (x, y, _), score in zip(windows, scores_batch):
-                    x1 = int(x * scale_x_win)
-                    y1 = int(y * scale_y_win)
-                    x2 = int((x + WINDOW_SIZE[0]) * scale_x_win)
-                    y2 = int((y + WINDOW_SIZE[1]) * scale_y_win)
+                for (x, y, _), sc in zip(windows, scores_batch):
+                    x1 = int(x * sx)
+                    y1 = int(y * sy)
+                    x2 = int((x + WINDOW_SIZE[0]) * sx)
+                    y2 = int((y + WINDOW_SIZE[1]) * sy)
                     detections.append([x1, y1, x2, y2])
-                    scores.append(score)
+                    scores.append(sc)
 
         nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
         final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
 
-        # ---------------- TP/FP/FN ----------------
-        matched_gt = [False]*len(gt_boxes_scaled)
-        matched_det = [False]*len(final_boxes)
+        frame_tp = 0
+        frame_fp = 0
+        frame_fn = 0
 
-        # Match TP
-        for i, gt in enumerate(gt_boxes_scaled):
-            for j, (box, score) in enumerate(zip(final_boxes, final_scores)):
-                if score >= BEST_THRESHOLD and iou(box, gt) > IOU_POSITIVE and not matched_det[j]:
-                    matched_gt[i] = True
-                    matched_det[j] = True
+        matched_gt = set()
+
+        for box, sc in zip(final_boxes, final_scores):
+            is_tp = False
+            for i, g in enumerate(gt_scaled):
+                if i in matched_gt:
+                    continue
+                if iou(box, g) > IOU_POSITIVE:
+                    is_tp = True
+                    matched_gt.add(i)
                     break
 
-        # TP/FN
-        for m in matched_gt:
-            if m:
-                tp_total += 1
-            else:
-                fn_total += 1
+            if sc >= THRESHOLD:
+                if is_tp:
+                    frame_tp += 1
+                else:
+                    frame_fp += 1
 
-        # FP
-        for j, score in enumerate(final_scores):
-            if score >= BEST_THRESHOLD and not matched_det[j]:
-                fp_total += 1
+        frame_fn = len(gt_scaled) - len(matched_gt)
 
-        # Print tid + TP/FP/FN
-        processed_frames += 1
+        running_tp += frame_tp
+        running_fp += frame_fp
+        running_fn += frame_fn
+
         elapsed = time.time() - start_time
-        progress = processed_frames / total_frames
-        if progress > 0:
-            est_total = elapsed / progress
-            remaining = est_total - elapsed
-            print(f"Processed frame {processed_frames}/{total_frames} "
-                  f"({progress*100:.2f}%), Elapsed: {elapsed:.1f}s, Remaining: {remaining:.1f}s | "
-                  f"TP: {tp_total}, FP: {fp_total}, FN: {fn_total}", end="\r")
+        progress = frame_id / total_frames
+        remaining = (elapsed / progress) - elapsed if progress > 0 else 0
+
+        print(
+            f"Frame {frame_id}/{total_frames} | "
+            f"TP: {running_tp}  FP: {running_fp}  FN: {running_fn} | "
+            f"Elapsed: {elapsed:.1f}s | Remaining: {remaining:.1f}s",
+            end="\r"
+        )
+
+        for box, sc in zip(final_boxes, final_scores):
+            label = 0
+            for g in gt_scaled:
+                if iou(box, g) > IOU_POSITIVE:
+                    label = 1
+                    break
+            scores_all.append(sc)
+            labels_all.append(label)
 
     cap.release()
+    print()
+    return scores_all, labels_all
+
+
+# ---------------- RUN BOTH VIDEOS ----------------
+all_scores = []
+all_labels = []
+
+for vid, js in zip(VIDEOS, JSONS):
+    s, l = process_pair(vid, js)
+    all_scores.extend(s)
+    all_labels.extend(l)
+
+all_scores = np.array(all_scores, dtype=np.float32)
+all_labels = np.array(all_labels, dtype=np.int32)
 
 # ---------------- METRICS ----------------
-precision = tp_total / (tp_total+fp_total) if (tp_total+fp_total) > 0 else 0
-recall = tp_total / (tp_total+fn_total) if (tp_total+fn_total) > 0 else 0
-f1 = 2*precision*recall / (precision+recall) if (precision+recall) > 0 else 0
+pred = (all_scores >= THRESHOLD).astype(int)
 
-print(f"\nFINAL TEST RESULTS:")
-print(f"TP: {tp_total}, FP: {fp_total}, FN: {fn_total}")
-print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-score: {f1:.4f}")
+tp = int(np.sum((all_labels == 1) & (pred == 1)))
+fp = int(np.sum((all_labels == 0) & (pred == 1)))
+fn = int(np.sum((all_labels == 1) & (pred == 0)))
+
+precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+f1 = 2 * precision * recall / (precision + recall + 1e-9)
+
+print("\n===== FINAL METRICS (2 videoer samlet) =====")
+print(f"Threshold: {THRESHOLD}")
+print(f"TP: {tp}")
+print(f"FP: {fp}")
+print(f"FN: {fn}")
+print(f"Precision: {precision:.4f}")
+print(f"Recall:    {recall:.4f}")
+print(f"F1-score:  {f1:.4f}")
