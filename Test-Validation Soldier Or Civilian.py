@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
-THRESHOLD_SCORE = 0.8
+THRESHOLD_SCORE = 0.5
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -66,7 +66,7 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
             score = cv2.compareHist(roi_hist, ref_hist, method)
             if score < best_score:
                 best_score = score
-    
+
     # Reverse logic for Bhattacharyya distance: lower=better to higher=better and normalize to [0, 1]:
     match_score = max(0.0, min(1.0, 1.0 - best_score))
 
@@ -169,7 +169,7 @@ def show_video_with_annotations(video_path=VIDEO_PATH, json_path=COCO_JSON, id_o
         # Overlay info
         cv2.putText(frame, f"Frame {frame_idx}/{total_frames}",
                     (10,20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
-        
+
         display_frame = cv2.resize(frame, (0,0), fx=0.75, fy=0.75)
         cv2.imshow("Annotated Video + Crop Overlay", display_frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -324,9 +324,9 @@ def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Referenc
     plot_precision_recall(all_ground_truth, all_match_scores)
 
 # Main
-evaluate_classify_person(VIDEO_PATH, COCO_JSON)
+#evaluate_classify_person(VIDEO_PATH, COCO_JSON)
 video_json_pairs = [
-    ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
-    ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
+    ("ProjektVideoer/Civil person.MP4", "Træning/Civil person.json"),
+    ("ProjektVideoer/2 mili der ligger ned og 1 civil.MP4", "Træning/2 mili der ligger ned og 1 civil.json")
 ]
-#evaluate_multiple_videos_combined(video_json_pairs)
+evaluate_multiple_videos_combined(video_json_pairs)
