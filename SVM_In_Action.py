@@ -18,13 +18,8 @@ STEP_SIZES = {
 
 NMS_THRESHOLD = 0.05
 DISPLAY_SCALE = 0.3
-<<<<<<< HEAD
 FRAME_SKIP = 20
 SVM_THRESHOLD = 2
-=======
-FRAME_SKIP = 40
-SVM_THRESHOLD = 0.8
->>>>>>> fa368a193da2d0628d649223bd8d54ceff256772
 
 
 # ---------------- LOAD MODEL ----------------
