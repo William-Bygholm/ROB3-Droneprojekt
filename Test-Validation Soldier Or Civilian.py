@@ -330,7 +330,7 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
     # Load reference histograms and annotations
     reference_histograms = load_reference_histograms(reference_path)
 
-    thresholds = np.arange(0.2, 1.01, 0.05)
+    thresholds = np.arange(0.8, 1.01, 0.05)
     results = []
     accuracies = []
     fbeta_scores = []
@@ -354,9 +354,8 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
         report = classification_report(all_ground_truth, all_predicted, output_dict=True)
         acc = report["accuracy"]
 
-        fbeta_val = fbeta_score(all_ground_truth, all_predicted, beta=2, average='weighted')
+        fbeta_val = fbeta_score(all_ground_truth, all_predicted, beta=0.5, average='binary', pos_label=1)
 
-        print(f"Threshold {thr:.2f} -> Accuracy: {acc:.4f}")
         results.append((thr, report, fbeta_val))
         accuracies.append(acc)
         fbeta_scores.append(fbeta_val)
@@ -383,14 +382,14 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
 
     # Plot accuracy and F-beta vs threshold
     plt.figure()
-    plt.plot(thresholds, accuracies, marker='o', label="Accuracy")
+    #plt.plot(thresholds, accuracies, marker='o', label="Accuracy")
     plt.plot(thresholds, fbeta_scores, marker='s', label=f"F-beta")
     plt.axvline(best_thr, color='r', linestyle='--', label=f"Best Threshold: {best_thr:.2f}")
-    plt.scatter(best_thr, best_acc, color='red', zorder=5)
+    #plt.scatter(best_thr, best_acc, color='red', zorder=5)
     plt.scatter(best_thr, best_fbeta, color='purple', zorder=5)
-    plt.title("Threshold vs Accuracy and F-beta")
+    plt.title("Threshold vs F-beta")
     plt.xlabel("Threshold")
-    plt.ylabel("Score")
+    plt.ylabel("F-beta Score")
     plt.legend()
     plt.grid()
     plt.show()
@@ -403,7 +402,8 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
         "f1_0": f1_0,
         "precision_1": precision_1,
         "recall_1": recall_1,
-        "f1_1": f1_1
+        "f1_1": f1_1,
+        "F-beta": best_fbeta
     }
 
 # Main
