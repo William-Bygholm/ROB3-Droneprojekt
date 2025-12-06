@@ -330,7 +330,7 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
     # Load reference histograms and annotations
     reference_histograms = load_reference_histograms(reference_path)
 
-    thresholds = np.arange(0.8, 1.01, 0.05)
+    thresholds = np.arange(0.0, 1.01, 0.05)
     results = []
     accuracies = []
     fbeta_scores = []
@@ -350,7 +350,7 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
             all_match_scores.extend(match_scores)
             all_predicted.extend(predicted_labels)
         
-        # Classification report
+        # Classification report and F-beta score
         report = classification_report(all_ground_truth, all_predicted, output_dict=True)
         acc = report["accuracy"]
 
@@ -360,7 +360,7 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
         accuracies.append(acc)
         fbeta_scores.append(fbeta_val)
 
-    # Find best threshold based on accuracy
+    # Find best threshold based on F-beta score
     best_thr, best_report, best_fbeta = max(results, key=lambda x: x[2])
     best_acc = best_report["accuracy"]
 
@@ -374,22 +374,22 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
     f1_1 = best_report["1"]["f1-score"]
 
     print(f"\nBest threshold: {best_thr:.2f} (accuracy: {best_acc:.3f}, fbeta-score: {best_fbeta:.3f})")
-    print(f"Class 0 (Civilian): Precision: {precision_0:.3f}, Recall: {recall_0:.3f}, F1-score: {f1_0:.3f}")
-    print(f"Class 1 (Military): Precision: {precision_1:.3f}, Recall: {recall_1:.3f}, F1-score: {f1_1:.3f}")
+    print(f"Class 0 (Civilian): Precision: {precision_0:.2f}, Recall: {recall_0:.2f}, F1-score: {f1_0:.2f}")
+    print(f"Class 1 (Military): Precision: {precision_1:.2f}, Recall: {recall_1:.2f}, F1-score: {f1_1:.2f}")
 
     # Precision-Recall curve for best threshold
     plot_precision_recall(all_ground_truth, all_match_scores)
 
     # Plot accuracy and F-beta vs threshold
     plt.figure()
-    #plt.plot(thresholds, accuracies, marker='o', label="Accuracy")
+    plt.plot(thresholds, accuracies, marker='o', label="Accuracy")
     plt.plot(thresholds, fbeta_scores, marker='s', label=f"F-beta")
     plt.axvline(best_thr, color='r', linestyle='--', label=f"Best Threshold: {best_thr:.2f}")
-    #plt.scatter(best_thr, best_acc, color='red', zorder=5)
+    plt.scatter(best_thr, best_acc, color='red', zorder=5)
     plt.scatter(best_thr, best_fbeta, color='purple', zorder=5)
-    plt.title("Threshold vs F-beta")
+    plt.title("Threshold vs F-beta and Accuracy")
     plt.xlabel("Threshold")
-    plt.ylabel("F-beta Score")
+    plt.ylabel("F-beta Score and Accuracy")
     plt.legend()
     plt.grid()
     plt.show()
