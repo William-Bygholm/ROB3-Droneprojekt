@@ -286,7 +286,7 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
     ground_truth_labels, match_scores, predicted_labels = collect_scores(video_path, frame_annotations, reference_histograms)
 
     # Confusion matrix
-    conf_matrix = confusion_matrix(all_ground_truth, all_predicted, labels=[0,1])
+    conf_matrix = confusion_matrix(ground_truth_labels, predicted_labels, labels=[0,1])
     disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix, display_labels=["Civilian", "Military"])
     disp.plot(cmap=plt.cm.Blues, values_format='d')
     plt.title("Confusion Matrix (Military vs Civilian)")
@@ -419,11 +419,11 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
     }
 
 # Main
-#evaluate_classify_person(VIDEO_PATH, COCO_JSON)
+evaluate_classify_person(VIDEO_PATH, COCO_JSON)
 
-video_json_pairs = [
-    ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
-    ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
-]
+# video_json_pairs = [
+#     ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
+#     ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
+# ]
 #evaluate_thresholds(video_json_pairs)
-evaluate_multiple_videos_combined(video_json_pairs)
+#evaluate_multiple_videos_combined(video_json_pairs)
