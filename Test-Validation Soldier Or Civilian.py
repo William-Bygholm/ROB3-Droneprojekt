@@ -2,12 +2,12 @@ import cv2
 import numpy as np
 import os
 import json
-from sklearn.metrics import confusion_matrix, classification_report, precision_recall_curve, fbeta_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, precision_recall_curve, fbeta_score
 from matplotlib import pyplot as plt
 
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
-THRESHOLD_SCORE = None
+THRESHOLD_SCORE = 0.9
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -286,7 +286,11 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
     ground_truth_labels, match_scores, predicted_labels = collect_scores(video_path, frame_annotations, reference_histograms)
 
     # Confusion matrix
-    print("\nConfusion Matrix:\n", confusion_matrix(ground_truth_labels, predicted_labels))
+    conf_matrix = confusion_matrix(all_ground_truth, all_predicted, labels=[0,1])
+    disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix, display_labels=["Civilian", "Military"])
+    disp.plot(cmap=plt.cm.Blues, values_format='d')
+    plt.title("Confusion Matrix (Military vs Civilian)")
+    plt.show()
 
     # Classification report
     print("\nClassification Report:\n", classification_report(ground_truth_labels, predicted_labels))
@@ -316,10 +320,18 @@ def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Referenc
         all_predicted.extend(predicted_labels)
 
     # Combined confusion matrix
-    print("\nConfusion Matrix (combined):\n", confusion_matrix(all_ground_truth, all_predicted))
+    conf_matrix = confusion_matrix(all_ground_truth, all_predicted, labels=[0,1])
+    disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix, display_labels=["Civilian", "Military"])
+    disp.plot(cmap=plt.cm.Blues, values_format='d')
+    plt.title("Confusion Matrix (Military vs Civilian)")
+    plt.show()
 
     # Combined classification report
     print("\nClassification Report (combined):\n", classification_report(all_ground_truth, all_predicted))
+
+    # F-beta score
+    print("F-beta score for military", fbeta_score(all_ground_truth, all_predicted, beta=0.5, average='binary', pos_label=1))
+    
     # Reuse existing plot function
     plot_precision_recall(all_ground_truth, all_match_scores)
 
@@ -410,8 +422,8 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
 #evaluate_classify_person(VIDEO_PATH, COCO_JSON)
 
 video_json_pairs = [
-    ("ProjektVideoer/2 militær med blå bånd .MP4", "Validation/2 mili med blå bond.json"),
-    ("ProjektVideoer/Civil person.MP4", "Træning/Civil person.json")
+    ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
+    ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
 ]
-evaluate_thresholds(video_json_pairs)
-#evaluate_multiple_videos_combined(video_json_pairs)
+#evaluate_thresholds(video_json_pairs)
+evaluate_multiple_videos_combined(video_json_pairs)
