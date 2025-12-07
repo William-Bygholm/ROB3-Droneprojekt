@@ -16,7 +16,7 @@ MODEL_FILE = "Person_Detector_Json+YOLO.pkl"
 SCALES = [1.2, 1, 0.8, 0.64]
 STEP_SIZES = {1.2: 36, 1: 34, 0.8: 28, 0.64: 24}
 NMS_THRESHOLD = 0.05
-FRAME_SKIP = 50
+FRAME_SKIP = 2
 WINDOW_SIZE = (128, 256)
 IOU_POSITIVE = 0.3
 
@@ -310,7 +310,7 @@ accuracy = tp_dets / (tp_dets + fp_dets + fn_total) if (tp_dets + fp_dets + fn_t
 
 print(f"\nBest Threshold: {best_threshold:.4f} | F1 (det-only): {best_f1:.4f} | "
       f"Precision: {precision:.4f} | Recall: {recall:.4f} | Accuracy: {accuracy:.4f}")
-print(f"TP: {tp_dets}, FP: {fp_dets}, FN: {fn_total}, TN: {tn_total}")
+print(f"TP: {tp_dets}, FP: {fp_dets}, FN: {fn_total}")
 
 # ---------------- PLOT (based on detection samples) ----------------
 fpr, tpr, _ = roc_curve(det_labels, det_scores)
