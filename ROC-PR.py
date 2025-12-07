@@ -135,19 +135,25 @@ while True:
     h0, w0 = gray.shape[:2]
     scale_x = w0 / coco_w
     scale_y = h0 / coco_h
+
+    # Load GT boxes for current frame
     gt_boxes = frame_to_boxes.get(frame_id, [])
-    gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)]
-                       for x1,y1,x2,y2 in gt_boxes]
+    gt_boxes_scaled = [[int(x1*scale_x), int(y1*scale_y),
+                        int(x2*scale_x), int(y2*scale_y)]
+                        for x1,y1,x2,y2 in gt_boxes]
 
     detections, scores = [], []
 
+    # ------ Run detector ------
     for scale in SCALES:
         resized = cv2.resize(gray, None, fx=scale, fy=scale)
         step = STEP_SIZES[scale]
         scale_x_win = w0 / resized.shape[1]
         scale_y_win = h0 / resized.shape[0]
+
         windows = list(sliding_windows(resized, step, WINDOW_SIZE))
         feats = [hog.compute(win).ravel() for _,_,win in windows]
+
         if feats:
             scores_batch = clf.decision_function(feats)
             for (x, y, _), score in zip(windows, scores_batch):
@@ -161,15 +167,36 @@ while True:
     nms_boxes, nms_scores = nms_opencv(detections, scores, 0.0, NMS_THRESHOLD)
     final_boxes, final_scores = merge_close_boxes(nms_boxes, nms_scores)
 
-    for box, score in zip(final_boxes, final_scores):
-        label = 0
-        for g in gt_boxes_scaled:
-            if iou(box, g) > IOU_POSITIVE:
-                label = 1
-                break
-        scores_all.append(score)
-        labels_all.append(label)
+    # ------ MATCH DETECTIONS TO GT (COCO-correct) ------
+    gt_used = [False] * len(gt_boxes_scaled)
 
+    # Per-frame temp lists
+    frame_scores = []
+    frame_labels = []
+
+    # For each detection → TP or FP
+    for det_box, score in zip(final_boxes, final_scores):
+        matched = False
+        for i, g in enumerate(gt_boxes_scaled):
+            if not gt_used[i] and iou(det_box, g) > IOU_POSITIVE:
+                gt_used[i] = True
+                matched = True
+                break
+
+        frame_labels.append(1 if matched else 0)
+        frame_scores.append(score)
+
+    # For each GT person NOT detected → FN
+    for used in gt_used:
+        if not used:
+            frame_labels.append(1)      # Person exists
+            frame_scores.append(-999.0) # Dummy low score (forces FN)
+
+    # Save to global arrays
+    scores_all.extend(frame_scores)
+    labels_all.extend(frame_labels)
+
+    # ------ Progress ------
     elapsed = time.time() - start_time
     progress = frame_id / total_frames
     if progress > 0:
@@ -181,7 +208,7 @@ while True:
               f"Remaining: {remaining:.1f}s", end="\r")
 
 cap.release()
-print(f"\n[INFO] Validation complete. Collected {len(scores_all)} detections.")
+print(f"\n[INFO] Validation complete. Collected {len(scores_all)} evaluation samples.")
 
 # ---------------- METRICS ----------------
 scores = np.array(scores_all, dtype=np.float32)
