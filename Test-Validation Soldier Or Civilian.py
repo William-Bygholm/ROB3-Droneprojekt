@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
-THRESHOLD_SCORE = 0.9
+THRESHOLD_SCORE = 0.8
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -330,7 +330,7 @@ def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Referenc
     print("\nClassification Report (combined):\n", classification_report(all_ground_truth, all_predicted))
 
     # F-beta score
-    print("F-beta score for military", fbeta_score(all_ground_truth, all_predicted, beta=0.5, average='binary', pos_label=1))
+    print("F-beta score for military", fbeta_score(all_ground_truth, all_predicted, beta=0.3, average='binary', pos_label=1))
     
     # Reuse existing plot function
     plot_precision_recall(all_ground_truth, all_match_scores)
@@ -366,7 +366,7 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
         report = classification_report(all_ground_truth, all_predicted, output_dict=True)
         acc = report["accuracy"]
 
-        fbeta_val = fbeta_score(all_ground_truth, all_predicted, beta=0.5, average='binary', pos_label=1)
+        fbeta_val = fbeta_score(all_ground_truth, all_predicted, beta=0.3, average='binary', pos_label=1)
 
         results.append((thr, report, fbeta_val))
         accuracies.append(acc)
