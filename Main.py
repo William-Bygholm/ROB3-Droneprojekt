@@ -11,12 +11,12 @@ import os
 VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
 MODEL_FILE = "svm_hog_model.pkl_v3"
 WINDOW_SIZE = (128, 256)
-SCALES = [1.0, 0.8, 0.64]
-STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
-NMS_THRESHOLD = 0.15
+SCALES = [1.2, 1.0, 0.8, 0.64]
+STEP_SIZES = {1.2: 36, 1: 34, 0.8: 28, 0.64: 24}
+NMS_THRESHOLD = 0.05
 DISPLAY_SCALE = 0.3
-FRAME_SKIP = 10
-SVM_THRESHOLD = 1
+FRAME_SKIP = 2
+SVM_THRESHOLD = 0.6844
 
 # ---------------- LOAD MODEL ----------------
 clf = joblib.load(MODEL_FILE) 
@@ -103,8 +103,9 @@ def detect_people(frame, clf, hog):
     h0, w0 = gray.shape[:2]
 
     detections = []
-    scores = []
+    scores_list = []
 
+    # Sliding windows + samle features til batch scoring
     for scale in SCALES:
         resized = cv2.resize(gray, None, fx=scale, fy=scale)
         step = STEP_SIZES[scale]
@@ -116,20 +117,38 @@ def detect_people(frame, clf, hog):
             if win.shape != (WINDOW_SIZE[1], WINDOW_SIZE[0]):
                 continue
             feat = hog.compute(win).ravel()
-            score = clf.decision_function([feat])[0]
+            scores_list.append((x, y, scale_x, scale_y, feat))
 
-            if score > SVM_THRESHOLD:
-                x1 = int(x * scale_x)
-                y1 = int(y * scale_y)
-                x2 = int((x + WINDOW_SIZE[0]) * scale_x)
-                y2 = int((y + WINDOW_SIZE[1]) * scale_y)
-                detections.append([x1, y1, x2, y2])
-                scores.append(score)
+    if not scores_list:
+        return []
 
+    # Batch scoring
+    feats = np.array([f for (_, _, _, _, f) in scores_list])
+    scores_batch = clf.decision_function(feats)
+
+    # Lav detections med coords
+    detections = []
+    scores = []
+    for (x, y, sx, sy, _), score in zip(scores_list, scores_batch):
+        if score > SVM_THRESHOLD:
+            x1 = int(x * sx)
+            y1 = int(y * sy)
+            x2 = int((x + WINDOW_SIZE[0]) * sx)
+            y2 = int((y + WINDOW_SIZE[1]) * sy)
+            detections.append([x1, y1, x2, y2])
+            scores.append(score)
+
+    # NMS
     nms_boxes = nms_opencv(detections, scores, SVM_THRESHOLD, NMS_THRESHOLD)
-    final_boxes = merge_close_boxes(nms_boxes, iou_threshold=0.2)
-    
+
+    # Merge-close-boxes med sortering efter score
+    final_boxes = []
+    if nms_boxes:
+        nms_scores = [s for d, s in sorted(zip(nms_boxes, scores), key=lambda x: x[1], reverse=True)]
+        final_boxes = merge_close_boxes(nms_boxes, iou_threshold=0.2)
+
     return final_boxes
+
 
 
 # from Soldier Or Civilian her
