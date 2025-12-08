@@ -257,19 +257,6 @@ def collect_scores(video_path, frame_annotations, reference_histograms, id_offse
     cap.release()
     return ground_truth_labels, match_scores, predicted_labels
 
-def plot_precision_recall(ground_truth_labels, match_scores):
-    """
-    Plot Precision-Recall curve based on collected scores and ground truth labels.
-    """
-    precision, recall, _ = precision_recall_curve(ground_truth_labels, match_scores, pos_label=1)
-
-    plt.figure()
-    plt.plot(recall, precision, color='blue', lw=2)
-    plt.xlabel("Recall")
-    plt.ylabel("Precision")
-    plt.title("Precision-Recall curve: Military")
-    plt.show()
-
 def evaluate_classify_person(video_path, json_path, reference_path="Reference templates"):
     """
     Evaluates the classication algorithm on a video with annotations.
@@ -294,9 +281,6 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
 
     # Classification report
     print("\nClassification Report:\n", classification_report(ground_truth_labels, predicted_labels))
-
-    # Precision-Recall curve
-    plot_precision_recall(ground_truth_labels, match_scores)
 
 def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Reference templates"):
     """
@@ -331,9 +315,6 @@ def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Referenc
 
     # F-beta score
     print("F-beta score for military", fbeta_score(all_ground_truth, all_predicted, beta=0.3, average='binary', pos_label=1))
-    
-    # Reuse existing plot function
-    plot_precision_recall(all_ground_truth, all_match_scores)
 
 def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
     """
@@ -388,9 +369,6 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
     print(f"\nBest threshold: {best_thr:.2f} (accuracy: {best_acc:.3f}, fbeta-score: {best_fbeta:.3f})")
     print(f"Class 0 (Civilian): Precision: {precision_0:.2f}, Recall: {recall_0:.2f}, F1-score: {f1_0:.2f}")
     print(f"Class 1 (Military): Precision: {precision_1:.2f}, Recall: {recall_1:.2f}, F1-score: {f1_1:.2f}")
-
-    # Precision-Recall curve for best threshold
-    plot_precision_recall(all_ground_truth, all_match_scores)
 
     # Plot accuracy and F-beta vs threshold
     plt.figure()
