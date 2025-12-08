@@ -261,13 +261,13 @@ def plot_precision_recall(ground_truth_labels, match_scores):
     """
     Plot Precision-Recall curve based on collected scores and ground truth labels.
     """
-    precision, recall, thresholds = precision_recall_curve(ground_truth_labels, match_scores)
+    precision, recall, _ = precision_recall_curve(ground_truth_labels, match_scores, pos_label=1)
 
     plt.figure()
     plt.plot(recall, precision, color='blue', lw=2)
     plt.xlabel("Recall")
     plt.ylabel("Precision")
-    plt.title("Precision-Recall curve: Military vs Civilian")
+    plt.title("Precision-Recall curve: Military")
     plt.show()
 
 def evaluate_classify_person(video_path, json_path, reference_path="Reference templates"):
@@ -419,11 +419,11 @@ def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
     }
 
 # Main
-evaluate_classify_person(VIDEO_PATH, COCO_JSON)
+#evaluate_classify_person(VIDEO_PATH, COCO_JSON)
 
-# video_json_pairs = [
-#     ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
-#     ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
-# ]
+video_json_pairs = [
+    ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
+    ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
+]
 #evaluate_thresholds(video_json_pairs)
-#evaluate_multiple_videos_combined(video_json_pairs)
+evaluate_multiple_videos_combined(video_json_pairs)
