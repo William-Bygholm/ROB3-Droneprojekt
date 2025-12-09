@@ -9,11 +9,11 @@ import seaborn as sns
 # Define multiple video/annotation pairs
 DATASET = [
     {
-        "video": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 militær med blå bånd .MP4",
+        "video": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
         "json": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\3mili 2 onde 1 god.json"
     },
     {
-        "video": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\3 mili 2 onde 1 god.MP4",
+        "video": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\ProjektVideoer\2 mili en idiot der ligger ned.MP4",
         "json": r"C:\Users\olafa\Documents\GitHub\ROB3-Droneprojekt\Testing\2 mili og 1 idiot.json"
     }
     # Add more video/json pairs here as needed
@@ -76,27 +76,43 @@ def normalize_prediction(classification):
     elif 'Bad soldier' in classification:
         return 'Bad soldier'
     else:
-        return 'Soldier'
+        return 'Soldier'  # Changed from 'Unclassified soldier' to match ground truth label
 
 def plot_confusion_matrix(y_true, y_pred, output_path):
     """Generate and save confusion matrix as PNG"""
-    # Define class order
+    # Define class order - include all possible classes
     labels = ['Good soldier', 'Bad soldier', 'Good HVT', 'Bad HVT', 'Soldier']
     
     # Filter to only include labels that appear in the data
     unique_labels = sorted(set(y_true + y_pred))
     labels = [l for l in labels if l in unique_labels]
     
-    # Compute confusion matrix
+    # Debug: show which labels appear
+    print(f"\nLabels in ground truth (y_true): {sorted(set(y_true))}")
+    print(f"Labels in predictions (y_pred): {sorted(set(y_pred))}")
+    print(f"Labels used in confusion matrix: {labels}")
+    
+    # Compute confusion matrix (raw counts)
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     
-    # Create figure
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=labels, yticklabels=labels,
-                cbar_kws={'label': 'Count'})
+    # Normalize confusion matrix to percentages (row-wise normalization)
+    cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
     
-    plt.title('Confusion Matrix - Soldier Classification', fontsize=16, fontweight='bold')
+    # Create annotations with both percentage and count
+    annotations = np.array([[f'{cm_normalized[i,j]:.1f}%\n({cm[i,j]})' 
+                            for j in range(cm.shape[1])] 
+                           for i in range(cm.shape[0])])
+    
+    # Create display labels (replace "Soldier" with "Unclassified soldier" for display only)
+    display_labels = ['Unclassified soldier' if l == 'Soldier' else l for l in labels]
+    
+    # Create figure
+    plt.figure(figsize=(12, 9))
+    sns.heatmap(cm_normalized, annot=annotations, fmt='', cmap='Blues', 
+                xticklabels=display_labels, yticklabels=display_labels,
+                cbar_kws={'label': 'Percentage (%)'}, vmin=0, vmax=100)
+    
+    plt.title('Confusion Matrix - Soldier Classification (Normalized)', fontsize=16, fontweight='bold')
     plt.ylabel('Ground Truth', fontsize=12)
     plt.xlabel('Predicted', fontsize=12)
     plt.xticks(rotation=45, ha='right')
@@ -249,10 +265,33 @@ def crop_to_bbox(img, bbox):
     h = min(h, img_h - y)
     return img[y:y+h, x:x+w]
 
+def crop_image(img):
+    # --- vertical crop: remove top portion and keep a top block ---
+    TOP_REMOVE_RATIO = 0.25  # remove top 25% of original
+    TOP_KEEP_RATIO = 0.5     # keep up to 50% of original (rows start_row .. end_row)
+    h = img.shape[0]
+    start_row = int(h * TOP_REMOVE_RATIO)
+    end_row = int(h * TOP_KEEP_RATIO)
+    if start_row >= end_row:
+        img = img[:int(h * TOP_KEEP_RATIO), :]
+    else:
+        img = img[start_row:end_row, :]
+
+    # --- horizontal crop: remove 5% from each side (margin) ---
+    WIDTH_REMOVE_RATIO = 0.1  # remove 10% from left and 10% from right
+    w = img.shape[1]
+    left = int(w * WIDTH_REMOVE_RATIO)
+    right = int(w * (1.0 - WIDTH_REMOVE_RATIO))
+    if left < right:
+        img = img[:, left:right]
+    return img
+
 def process_bbox_region(bbox_img):
     """Process a bounding box region: crop, blur, and analyze"""
     if bbox_img is None or bbox_img.size == 0:
         return None, [], []
+    
+    bbox_img = crop_image(bbox_img)
     
     # Apply Gaussian blur
     blurred = cv2.GaussianBlur(bbox_img, (13, 13), 0)
@@ -299,6 +338,7 @@ def process_video(video_path, json_path, scale=0.5, show_video=True):
     
     frame_idx = 0
     processed_count = 0
+    skipped_civilians = 0  # Track how many civilians we skip
     
     # Storage for confusion matrix
     y_true = []  # Ground truth labels
@@ -328,6 +368,14 @@ def process_video(video_path, json_path, scale=0.5, show_video=True):
         if annotations:
             # Process each bounding box in this frame
             for ann in annotations:
+                # Get ground truth label first to check if we should skip this annotation
+                ground_truth = get_ground_truth_label(ann)
+                
+                # Skip civilians - we only want to classify military targets
+                if ground_truth == 'Civilian':
+                    skipped_civilians += 1
+                    continue
+                
                 bbox = ann['bbox']  # [x, y, width, height]
                 x, y, w_box, h_box = [int(v) for v in bbox]
                 
@@ -342,8 +390,6 @@ def process_video(video_path, json_path, scale=0.5, show_video=True):
                         # Classify the target
                         classification, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
                         
-                        # Get ground truth label
-                        ground_truth = get_ground_truth_label(ann)
                         predicted = normalize_prediction(classification)
                         
                         # Store for confusion matrix
@@ -401,12 +447,15 @@ def process_video(video_path, json_path, scale=0.5, show_video=True):
                 print(f"Processing frame {frame_idx}/{total_frames}...")
         
         frame_idx += 1
-    
     cap.release()
     if show_video:
         cv2.destroyAllWindows()
-    print(f"\nProcessing complete! Processed {processed_count} frames with annotations.")
+    print(f"\nProcessing complete!")
+    print(f"  - Processed {processed_count} frames with annotations")
+    print(f"  - Skipped {skipped_civilians} civilian bounding boxes")
+    print(f"  - Collected {len(y_true)} military target predictions")
     
+    return y_true, y_pred
     return y_true, y_pred
 
 

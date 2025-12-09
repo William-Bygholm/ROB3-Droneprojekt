@@ -136,6 +136,9 @@ def classify_target(red_boxes, blue_boxes):
 
 def crop_image(img):
     # --- vertical crop: remove top portion and keep a top block ---
+    TOP_REMOVE_RATIO = 0.0  # remove top 25% of original
+def crop_image(img):
+    # --- vertical crop: remove top portion and keep a top block ---
     TOP_REMOVE_RATIO = 0.25  # remove top 25% of original
     TOP_KEEP_RATIO = 0.5     # keep up to 50% of original (rows start_row .. end_row)
     h = img.shape[0]
@@ -160,7 +163,7 @@ def process_image(image_path):
     if img is None:
         raise ValueError(f"Could not read image at {image_path}")
 
-    img = crop_image(img)
+    #img = crop_image(img)
 
     # blur color image 
     blurred = cv2.GaussianBlur(img, (5,5), 0)
