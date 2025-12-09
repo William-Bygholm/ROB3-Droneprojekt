@@ -216,12 +216,8 @@ def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA,
     match_score = max(0.0, min(1.0, 1.0 - best_score))
 
     if best_score < threshold_score:
-        print(f"Best score {best_score}")
-        print(f"Classification: Military")
         return "Military", match_score
     else:
-        print(f"No military match found. Best score: {best_score}")
-        print(f"Classification: Civilian")
         return "Civilian", match_score
 
 # find armbånd her
@@ -380,74 +376,74 @@ def crop_image(img):
 
 # ---------------- VIDEO PROCESSING ----------------
 
+if __name__ == "__main__":
+    cap = cv2.VideoCapture(VIDEO_IN)
+    frame_id = 0
 
-cap = cv2.VideoCapture(VIDEO_IN)
-frame_id = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-
-    frame_id += 1
-    if frame_id % FRAME_SKIP != 0:
-        continue
-
-    # Detect people and get bounding boxes
-    final_boxes = detect_people(frame, clf, hog)
-
-    # Draw boxes on frame
-    orig_frame = frame.copy()
-    
-    # Load reference histograms once (move outside loop for efficiency in real code)
-    reference_histograms = load_reference_histograms("Reference templates")
-    
-    # Process each detected person
-    for idx, (x1, y1, x2, y2) in enumerate(final_boxes):
-        # Extract the person ROI
-        roi = frame[y1:y2, x1:x2]
-
-        # Skip if ROI is too small
-        if roi.size == 0 or roi.shape[0] < 10 or roi.shape[1] < 10:
+        frame_id += 1
+        if frame_id % FRAME_SKIP != 0:
             continue
-        
-        # Classify person as soldier or unknown
-        classification, _ = classify_person(roi, reference_histograms, threshold_score=0.8)
-        
-        if classification == "Military":
-            # Analyze for armbands
-            cropped_roi = crop_image(roi)
-            blurred = cv2.GaussianBlur(cropped_roi, (5,5), 0)
-            cv2.imshow("olaf", blurred)
-            annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(blurred, morph_kernel=(3,3), morph_iters=1)
-            
-            # Classify target based on armband colors
-            target_class, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
-            
-            # Draw box with appropriate color
-            if target_type == "good":
-                box_color = (255, 0, 0)  # Blue for good
-            elif target_type == "bad":
-                box_color = (0, 0, 255)  # Red for bad
-            else:
-                box_color = (0, 255, 255)  # Yellow for unknown
-            
-            cv2.rectangle(orig_frame, (x1, y1), (x2, y2), box_color, 20)
-            
-            # Add label
-            label = f"{target_class}"
-            cv2.putText(orig_frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 20)
-        
-        elif classification == "Civilian":
-            # Draw gray box for civilians
-            cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (128, 128, 128), 20)
-            cv2.putText(orig_frame, "Civilian", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 2)
 
-    display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
-    cv2.imshow("Detection & Classification", display_frame)
+        # Detect people and get bounding boxes
+        final_boxes = detect_people(frame, clf, hog)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        # Draw boxes on frame
+        orig_frame = frame.copy()
+        
+        # Load reference histograms once (move outside loop for efficiency in real code)
+        reference_histograms = load_reference_histograms("Reference templates")
+        
+        # Process each detected person
+        for idx, (x1, y1, x2, y2) in enumerate(final_boxes):
+            # Extract the person ROI
+            roi = frame[y1:y2, x1:x2]
 
-cap.release()
-cv2.destroyAllWindows()
+            # Skip if ROI is too small
+            if roi.size == 0 or roi.shape[0] < 10 or roi.shape[1] < 10:
+                continue
+            
+            # Classify person as soldier or unknown
+            classification, _ = classify_person(roi, reference_histograms, threshold_score=0.8)
+            
+            if classification == "Military":
+                # Analyze for armbands
+                cropped_roi = crop_image(roi)
+                blurred = cv2.GaussianBlur(cropped_roi, (5,5), 0)
+                cv2.imshow("olaf", blurred)
+                annotated, mask_red, mask_blue, red_boxes, blue_boxes = blob_analysis(blurred, morph_kernel=(3,3), morph_iters=1)
+                
+                # Classify target based on armband colors
+                target_class, target_type, is_hvt = classify_target(red_boxes, blue_boxes)
+                
+                # Draw box with appropriate color
+                if target_type == "good":
+                    box_color = (255, 0, 0)  # Blue for good
+                elif target_type == "bad":
+                    box_color = (0, 0, 255)  # Red for bad
+                else:
+                    box_color = (0, 255, 255)  # Yellow for unknown
+                
+                cv2.rectangle(orig_frame, (x1, y1), (x2, y2), box_color, 20)
+                
+                # Add label
+                label = f"{target_class}"
+                cv2.putText(orig_frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 20)
+            
+            elif classification == "Civilian":
+                # Draw gray box for civilians
+                cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (128, 128, 128), 20)
+                cv2.putText(orig_frame, "Civilian", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 2)
+
+        display_frame = cv2.resize(orig_frame, (0, 0), fx=DISPLAY_SCALE, fy=DISPLAY_SCALE)
+        cv2.imshow("Detection & Classification", display_frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
