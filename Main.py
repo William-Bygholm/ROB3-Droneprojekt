@@ -11,12 +11,12 @@ import os
 VIDEO_IN = r"ProjektVideoer/2 militær med blå bånd .MP4"
 MODEL_FILE = "svm_hog_model.pkl_v3"
 WINDOW_SIZE = (128, 256)
-SCALES = [1.0, 0.8, 0.64]
-STEP_SIZES = {1.0: 32, 0.8: 28, 0.64: 20}
-NMS_THRESHOLD = 0.15
+SCALES = [1.2, 1.0, 0.8, 0.64]
+STEP_SIZES = {1.2: 36, 1: 34, 0.8: 28, 0.64: 24}
+NMS_THRESHOLD = 0.05
 DISPLAY_SCALE = 0.3
-FRAME_SKIP = 10
-SVM_THRESHOLD = 1
+FRAME_SKIP = 2
+SVM_THRESHOLD = 0.6844
 
 # ---------------- LOAD MODEL ----------------
 clf = joblib.load(MODEL_FILE) 
@@ -103,8 +103,9 @@ def detect_people(frame, clf, hog):
     h0, w0 = gray.shape[:2]
 
     detections = []
-    scores = []
+    scores_list = []
 
+    # Sliding windows + samle features til batch scoring
     for scale in SCALES:
         resized = cv2.resize(gray, None, fx=scale, fy=scale)
         step = STEP_SIZES[scale]
@@ -116,31 +117,48 @@ def detect_people(frame, clf, hog):
             if win.shape != (WINDOW_SIZE[1], WINDOW_SIZE[0]):
                 continue
             feat = hog.compute(win).ravel()
-            score = clf.decision_function([feat])[0]
+            scores_list.append((x, y, scale_x, scale_y, feat))
 
-            if score > SVM_THRESHOLD:
-                x1 = int(x * scale_x)
-                y1 = int(y * scale_y)
-                x2 = int((x + WINDOW_SIZE[0]) * scale_x)
-                y2 = int((y + WINDOW_SIZE[1]) * scale_y)
-                detections.append([x1, y1, x2, y2])
-                scores.append(score)
+    if not scores_list:
+        return []
 
+    # Batch scoring
+    feats = np.array([f for (_, _, _, _, f) in scores_list])
+    scores_batch = clf.decision_function(feats)
+
+    # Lav detections med coords
+    detections = []
+    scores = []
+    for (x, y, sx, sy, _), score in zip(scores_list, scores_batch):
+        if score > SVM_THRESHOLD:
+            x1 = int(x * sx)
+            y1 = int(y * sy)
+            x2 = int((x + WINDOW_SIZE[0]) * sx)
+            y2 = int((y + WINDOW_SIZE[1]) * sy)
+            detections.append([x1, y1, x2, y2])
+            scores.append(score)
+
+    # NMS
     nms_boxes = nms_opencv(detections, scores, SVM_THRESHOLD, NMS_THRESHOLD)
-    final_boxes = merge_close_boxes(nms_boxes, iou_threshold=0.2)
-    
+
+    # Merge-close-boxes med sortering efter score
+    final_boxes = []
+    if nms_boxes:
+        nms_scores = [s for d, s in sorted(zip(nms_boxes, scores), key=lambda x: x[1], reverse=True)]
+        final_boxes = merge_close_boxes(nms_boxes, iou_threshold=0.2)
+
     return final_boxes
+
 
 
 # from Soldier Or Civilian her
 
 
-def compute_histogram(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
+def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
     Help-function to compute a normalized HSV histogram for the upper part (breast region) of an image.
     This is used both for reference histograms creation and for classification.
     """
-    img = cv2.resize(img, target_size)
     h, w = img.shape[:2]
 
     new_h = max(1, int(h*height_ratio))
@@ -157,9 +175,9 @@ def compute_histogram(img, target_size=(64, 128), center_y_ratio=0.4, center_x_r
     if cropped.size == 0:
         raise ValueError("Cropped region has zero size. Check the cropping parameters.")
     
-    hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
-    hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
-    hist = cv2.normalize(hist, hist)
+    lab = cv2.cvtColor(cropped, cv2.COLOR_BGR2Lab)
+    hist = cv2.calcHist([lab], [2, 1], None, [60, 60], [0, 256, 0, 256])
+    hist = cv2.normalize(hist, hist).astype("float32")
     return hist
 
 def load_reference_histograms(base_dir):
@@ -181,56 +199,32 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def show_crop_overlay(img, target_size=(64, 128), center_y_ratio=0.4, center_x_ratio=0.5, height_ratio=0.3, width_ratio=0.3):
-    """
-    A function only to test and visualize the cropping area used in compute_histogram.
-    """
-    img = cv2.resize(img, target_size)
-    h, w = img.shape[:2]
-
-    crop_h = max(1, int(h * height_ratio))
-    crop_w = max(1, int(w * width_ratio))
-    y_center = int(h * center_y_ratio)
-    x_center = int(w * center_x_ratio)
-
-    y_start = max(0, y_center - crop_h // 2)
-    y_end   = min(h, y_start + crop_h)
-    x_start = max(0, x_center - crop_w // 2)
-    x_end   = min(w, x_start + crop_w)
-
-    # Tegn grøn boks
-    overlay = img.copy()
-    cv2.rectangle(overlay, (x_start, y_start), (x_end, y_end), (0, 255, 0), 2)
-
-    cv2.imshow("Crop Overlay", overlay)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.3):
+def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.8):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
-    Returns: (classification, best_score)
     """
     roi_hist = compute_histogram(roi)
-    best_label = None
     best_score = float('inf')
 
-    for label, histograms in reference_histograms.items():
+    for histograms in reference_histograms.values():
         for ref_hist in histograms:
             score = cv2.compareHist(roi_hist, ref_hist, method)
             if score < best_score:
                 best_score = score
-                best_label = label
+    
+    # Reverse logic for Bhattacharyya distance: lower=better to higher=better and normalize to [0, 1]:
+    match_score = max(0.0, min(1.0, 1.0 - best_score))
 
     if best_score < threshold_score:
         print(f"Best score {best_score}")
-        return "soldier"
+        print(f"Classification: Military")
+        return "Military", match_score
     else:
         print(f"No military match found. Best score: {best_score}")
-        return "unknown"
+        print(f"Classification: Civilian")
+        return "Civilian", match_score
 
 # find armbånd her
-
 
 def color_mask(hsv, lower, upper):
     """Handle hue wrap-around when creating an inRange mask."""
@@ -418,9 +412,9 @@ while True:
             continue
         
         # Classify person as soldier or unknown
-        classification = classify_person(roi, reference_histograms, threshold_score=0.8)
+        classification, _ = classify_person(roi, reference_histograms, threshold_score=0.8)
         
-        if classification == "soldier":
+        if classification == "Military":
             # Analyze for armbands
             cropped_roi = crop_image(roi)
             blurred = cv2.GaussianBlur(cropped_roi, (5,5), 0)
@@ -444,7 +438,7 @@ while True:
             label = f"{target_class}"
             cv2.putText(orig_frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 20)
         
-        elif classification == "unknown":
+        elif classification == "Civilian":
             # Draw gray box for civilians
             cv2.rectangle(orig_frame, (x1, y1), (x2, y2), (128, 128, 128), 20)
             cv2.putText(orig_frame, "Civilian", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 2)

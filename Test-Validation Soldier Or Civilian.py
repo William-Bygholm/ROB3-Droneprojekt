@@ -2,12 +2,12 @@ import cv2
 import numpy as np
 import os
 import json
-from sklearn.metrics import confusion_matrix, classification_report, precision_recall_curve
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, precision_recall_curve, fbeta_score
 from matplotlib import pyplot as plt
 
 VIDEO_PATH = "ProjektVideoer/2 militær med blå bånd .MP4"
 COCO_JSON = "Validation/2 mili med blå bond.json"
-THRESHOLD_SCORE = 0.5
+THRESHOLD_SCORE = 0.8
 
 def compute_histogram(img, center_y_ratio=0.35, center_x_ratio=0.5, height_ratio=0.2, width_ratio=0.3):
     """
@@ -54,7 +54,7 @@ def load_reference_histograms(base_dir):
         reference_histograms[label] = histograms
     return reference_histograms
 
-def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=0.5):
+def classify_person(roi, reference_histograms, method=cv2.HISTCMP_BHATTACHARYYA, threshold_score=THRESHOLD_SCORE):
     """
     Classify a person in the ROI as 'soldier' or 'unkown' based on histogram comparison.
     """
@@ -257,19 +257,6 @@ def collect_scores(video_path, frame_annotations, reference_histograms, id_offse
     cap.release()
     return ground_truth_labels, match_scores, predicted_labels
 
-def plot_precision_recall(ground_truth_labels, match_scores):
-    """
-    Plot Precision-Recall curve based on collected scores and ground truth labels.
-    """
-    precision, recall, thresholds = precision_recall_curve(ground_truth_labels, match_scores)
-
-    plt.figure()
-    plt.plot(recall, precision, color='blue', lw=2)
-    plt.xlabel("Recall")
-    plt.ylabel("Precision")
-    plt.title("Precision-Recall curve: Military vs Civilian")
-    plt.show()
-
 def evaluate_classify_person(video_path, json_path, reference_path="Reference templates"):
     """
     Evaluates the classication algorithm on a video with annotations.
@@ -286,13 +273,14 @@ def evaluate_classify_person(video_path, json_path, reference_path="Reference te
     ground_truth_labels, match_scores, predicted_labels = collect_scores(video_path, frame_annotations, reference_histograms)
 
     # Confusion matrix
-    print("\nConfusion Matrix:\n", confusion_matrix(ground_truth_labels, predicted_labels))
+    conf_matrix = confusion_matrix(ground_truth_labels, predicted_labels, labels=[0,1])
+    disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix, display_labels=["Civilian", "Military"])
+    disp.plot(cmap=plt.cm.Blues, values_format='d')
+    plt.title("Confusion Matrix (Military vs Civilian)")
+    plt.show()
 
     # Classification report
     print("\nClassification Report:\n", classification_report(ground_truth_labels, predicted_labels))
-
-    # Precision-Recall curve
-    plot_precision_recall(ground_truth_labels, match_scores)
 
 def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Reference templates"):
     """
@@ -316,17 +304,104 @@ def evaluate_multiple_videos_combined(video_json_pairs, reference_path="Referenc
         all_predicted.extend(predicted_labels)
 
     # Combined confusion matrix
-    print("\nConfusion Matrix (combined):\n", confusion_matrix(all_ground_truth, all_predicted))
+    conf_matrix = confusion_matrix(all_ground_truth, all_predicted, labels=[0,1])
+    disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix, display_labels=["Civilian", "Military"])
+    disp.plot(cmap=plt.cm.Blues, values_format='d')
+    plt.title("Confusion Matrix (Military vs Civilian)")
+    plt.show()
 
     # Combined classification report
     print("\nClassification Report (combined):\n", classification_report(all_ground_truth, all_predicted))
-    # Reuse existing plot function
-    plot_precision_recall(all_ground_truth, all_match_scores)
+
+    # F-beta score
+    print("F-beta score for military", fbeta_score(all_ground_truth, all_predicted, beta=0.3, average='binary', pos_label=1))
+
+def evaluate_thresholds(video_json_pairs, reference_path="Reference templates"):
+    """
+    Evaluates the classifier algorithm on multiple thresholds.
+    """
+    # Load reference histograms and annotations
+    reference_histograms = load_reference_histograms(reference_path)
+
+    thresholds = np.arange(0.0, 1.01, 0.05)
+    results = []
+    accuracies = []
+    fbeta_scores = []
+
+    for thr in thresholds:
+        print(f"\n--- Evaluating with threshold: {thr} ---")
+        global THRESHOLD_SCORE
+        THRESHOLD_SCORE = thr
+
+        all_ground_truth, all_match_scores, all_predicted = [], [], []
+        for video_path, json_path in video_json_pairs:
+            frame_annotations = load_annotations(json_path)
+
+            # Collect scores
+            ground_truth_labels, match_scores, predicted_labels = collect_scores(video_path, frame_annotations, reference_histograms)
+            all_ground_truth.extend(ground_truth_labels)
+            all_match_scores.extend(match_scores)
+            all_predicted.extend(predicted_labels)
+        
+        # Classification report and F-beta score
+        report = classification_report(all_ground_truth, all_predicted, output_dict=True)
+        acc = report["accuracy"]
+
+        fbeta_val = fbeta_score(all_ground_truth, all_predicted, beta=0.3, average='binary', pos_label=1)
+
+        results.append((thr, report, fbeta_val))
+        accuracies.append(acc)
+        fbeta_scores.append(fbeta_val)
+
+    # Find best threshold based on F-beta score
+    best_thr, best_report, best_fbeta = max(results, key=lambda x: x[2])
+    best_acc = best_report["accuracy"]
+
+    # Extract metrics
+    precision_0 = best_report["0"]["precision"]
+    recall_0 = best_report["0"]["recall"]
+    f1_0 = best_report["0"]["f1-score"]
+
+    precision_1 = best_report["1"]["precision"]
+    recall_1 = best_report["1"]["recall"]
+    f1_1 = best_report["1"]["f1-score"]
+
+    print(f"\nBest threshold: {best_thr:.2f} (accuracy: {best_acc:.3f}, fbeta-score: {best_fbeta:.3f})")
+    print(f"Class 0 (Civilian): Precision: {precision_0:.2f}, Recall: {recall_0:.2f}, F1-score: {f1_0:.2f}")
+    print(f"Class 1 (Military): Precision: {precision_1:.2f}, Recall: {recall_1:.2f}, F1-score: {f1_1:.2f}")
+
+    # Plot accuracy and F-beta vs threshold
+    plt.figure()
+    plt.plot(thresholds, accuracies, marker='o', label="Accuracy")
+    plt.plot(thresholds, fbeta_scores, marker='s', label=f"F-beta")
+    plt.axvline(best_thr, color='r', linestyle='--', label=f"Best Threshold: {best_thr:.2f}")
+    plt.scatter(best_thr, best_acc, color='red', zorder=5)
+    plt.scatter(best_thr, best_fbeta, color='purple', zorder=5)
+    plt.title("Threshold vs F-beta and Accuracy")
+    plt.xlabel("Threshold")
+    plt.ylabel("F-beta Score and Accuracy")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    return {
+        "best_threshold": best_thr,
+        "accuracy": best_report["accuracy"],
+        "precision_0": precision_0,
+        "recall_0": recall_0,
+        "f1_0": f1_0,
+        "precision_1": precision_1,
+        "recall_1": recall_1,
+        "f1_1": f1_1,
+        "F-beta": best_fbeta
+    }
 
 # Main
 #evaluate_classify_person(VIDEO_PATH, COCO_JSON)
+
 video_json_pairs = [
-    ("ProjektVideoer/Civil person.MP4", "Træning/Civil person.json"),
-    ("ProjektVideoer/2 mili der ligger ned og 1 civil.MP4", "Træning/2 mili der ligger ned og 1 civil.json")
+    ("ProjektVideoer/2 mili en idiot der ligger ned.MP4", "Testing/2 mili og 1 idiot.json"),
+    ("ProjektVideoer/3 mili 2 onde 1 god.MP4", "Testing/3mili 2 onde 1 god.json")
 ]
+#evaluate_thresholds(video_json_pairs)
 evaluate_multiple_videos_combined(video_json_pairs)
