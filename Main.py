@@ -53,7 +53,7 @@ def nms_opencv(detections, scores, score_threshold, nms_threshold):
     indices = indices.flatten()
     return [detections[i] for i in indices]
 
-def merge_close_boxes(boxes, iou_threshold=0.2):
+def merge_close_boxes(boxes, iou_threshold=0.3):
     merged = []
     used = [False] * len(boxes)
 
