@@ -328,7 +328,7 @@ plt.legend()
 plt.show()
 
 plt.figure()
-plt.plot(rec, prec, label=f"AUC = {auc(rec, prec):.4f}")
+plt.plot(rec, prec, label=f"Precision/Recall")
 plt.scatter([recall], [precision], color='red', s=80, label=f'Best thr = {best_threshold:.4f}')
 plt.title("Precision-Recall Curve (detection-level)")
 plt.xlabel("Recall")
